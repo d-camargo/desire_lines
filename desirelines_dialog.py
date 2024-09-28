@@ -24,6 +24,16 @@
 import os
 import desirelines, re
 import subprocess, sys, shutil, platform
+try:
+    import pandas
+    print("import ok")
+except ModuleNotFoundError:
+    if platform.system() == 'Windows':
+        subprocess.call([sys.exec_prefix + '/python', "-m", 'pip', 'install', 'pandas'])
+    else:
+        subprocess.call(['python3', '-m', 'pip', 'install', 'pandas'])
+    import pandas
+print("Erro3")
 from importlib import reload
 from qgis import processing
 
@@ -60,7 +70,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         self.mFieldComboBox_2.fieldChanged.connect(self.field_select_2)
         self.mFieldComboBox_3.fieldChanged.connect(self.field_select_3)
         self.makeDL.clicked.connect(self.desirelines)
-
+        self.checkBox.setChecked(False)
 
     def matrix(self):
         matrix_path = self.matrixInsert.filePath()
@@ -69,6 +79,15 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
             pass
         else:
             os.chdir(mph)
+        # Exibir o widget dentro do QGIS
+        if self.checkBox.isChecked() is True:
+            df = pd.read_csv(matrix_path, delimiter=';', skipinitialspace=True)
+            df_melt = df.melt(id_vars='OD', var_name='Destino', value_name='Passageiros')
+            df_melt.rename(columns={'OD': 'Origem'}, inplace=True)
+            df_melt.to_csv(mph+r'\matrix_long'+'.csv', sep=';', index=False)
+            matrix_path = mph+r'\matrix_long'+'.csv'
+        else:
+            pass
         #Load CSV File
         enc = 'windows-1252'
         uri = "file:///"+matrix_path+"?encoding={}&type=csv&delimiter={}&geomType=none".format(enc,";")

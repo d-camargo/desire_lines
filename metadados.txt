@@ -1,0 +1,47 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.# Mandatory items:
+
+[general]
+name=Desire Lines
+qgisMinimumVersion=3.0
+description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
+version=0.2
+author=Diego Camargo
+email=dg.camargo@proton.me
+
+about=The plugin helps users illustrate movement patterns, such as travel routes, pedestrian flows, or migration paths, allowing for a clearer understanding of spatial dynamics. By visualizing these paths, the plugin aids in urban planning, transportation analysis, and spatial studies, providing insights into how people or objects move between locations..
+
+tracker=http://bugs
+repository=https://github.com/d-camargo/desire_lines
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=no
+# Uncomment the following line and add your changelog:
+# changelog=
+
+# Tags are comma separated with spaces allowed
+tags=python
+
+homepage=https://github.com/d-camargo/desire_lines
+category=Vector
+icon=icon.png
+# experimental flag
+experimental=False
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+
+# Since QGIS 3.8, a comma separated list of plugins to be installed
+# (or upgraded) can be specified.
+# Check the documentation for more information.
+# plugin_dependencies=
+
+Category of the plugin: Vector, Database or Web
+# category=
+
+# If the plugin can run on QGIS Server.
+server=False
+
