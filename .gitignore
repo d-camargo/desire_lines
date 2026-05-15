@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# QGIS plugin build artifacts
+*.qm
+
+# Local test data and output
+test/*.gpkg
+test/*.gpkg-shm
+test/*.gpkg-wal
+test/*.csv
+output.gpkg
+output.gpkg-shm
+output.gpkg-wal
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp

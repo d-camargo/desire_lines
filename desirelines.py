@@ -25,7 +25,7 @@ import os
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis._core import QgsMapLayerProxyModel, QgsFieldProxyModel
+from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -47,11 +47,14 @@ class DesireLines:
         """
         # Save reference to the QGIS interface
         self.iface = iface
-        self.dlg = DesireLinesDialog()
+        # The dialog is created lazily in run(); creating Qt widgets here
+        # (inside classFactory) is fragile and the widget would be discarded
+        # on first run() anyway.
+        self.dlg = None
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
-        locale = QSettings().value('locale/userLocale')[0:2]
+        locale = (QSettings().value('locale/userLocale') or 'en_US')[0:2]
         locale_path = os.path.join(
             self.plugin_dir,
             'i18n',
@@ -172,7 +175,6 @@ class DesireLines:
 
         # will be set False in run()
         self.first_start = True
-        self.dlg.mMapLayerComboBox_2.setShowCrs(True)
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
@@ -191,6 +193,7 @@ class DesireLines:
         if self.first_start == True:
             self.first_start = False
             self.dlg = DesireLinesDialog()
+            self.dlg.mMapLayerComboBox_2.setShowCrs(True)
             self.dlg.matrixInsert.setFilter("CSV(*csv)")
             self.dlg.vectorInsert.setFilter("All files (*.*);;GPKG (*.gpkg);;SHP (*.shp)")
             self.dlg.mMapLayerComboBox_2.setFilters(QgsMapLayerProxyModel.PointLayer)

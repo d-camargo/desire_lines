@@ -22,19 +22,10 @@
  ***************************************************************************/
 """
 import os
-import desirelines, re
-import subprocess, sys, shutil, platform
 try:
-    import pandas
-    print("import ok")
+    import pandas as pd
 except ModuleNotFoundError:
-    if platform.system() == 'Windows':
-        subprocess.call([sys.exec_prefix + '/python', "-m", 'pip', 'install', 'pandas'])
-    else:
-        subprocess.call(['python3', '-m', 'pip', 'install', 'pandas'])
-    import pandas
-print("Erro3")
-from importlib import reload
+    pd = None
 from qgis import processing
 
 from qgis.PyQt import uic, QtWidgets
@@ -75,17 +66,20 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
     def matrix(self):
         matrix_path = self.matrixInsert.filePath()
         mph = os.path.dirname(matrix_path)
-        if mph == os.chdir(mph):
-            pass
-        else:
-            os.chdir(mph)
+        os.chdir(mph)
         # Exibir o widget dentro do QGIS
         if self.checkBox.isChecked() is True:
+            if pd is None:
+                iface.messageBar().pushCritical(
+                    'Desire Lines',
+                    'pandas is required for wide-to-long conversion. '
+                    'Install it in the QGIS Python environment and reload the plugin.')
+                return
             df = pd.read_csv(matrix_path, delimiter=';', skipinitialspace=True)
             df_melt = df.melt(id_vars='OD', var_name='Destino', value_name='Passageiros')
             df_melt.rename(columns={'OD': 'Origem'}, inplace=True)
-            df_melt.to_csv(mph+r'\matrix_long'+'.csv', sep=';', index=False)
-            matrix_path = mph+r'\matrix_long'+'.csv'
+            df_melt.to_csv(os.path.join(mph, 'matrix_long.csv'), sep=';', index=False)
+            matrix_path = os.path.join(mph, 'matrix_long.csv')
         else:
             pass
         #Load CSV File
@@ -93,7 +87,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         uri = "file:///"+matrix_path+"?encoding={}&type=csv&delimiter={}&geomType=none".format(enc,";")
         file = os.path.basename(matrix_path)
 
-        output_cent = os.getcwd()+r'\output.gpkg'
+        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
         matrix = QgsVectorLayer(uri, 'matrix', 'delimitedtext')
         QgsVectorFileWriter.writeAsVectorFormatV3(
             layer=matrix,
@@ -106,19 +100,16 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def fvector(self):
         vector_path = self.vectorInsert.filePath()
-        print(vector_path)
         vph = os.path.dirname(vector_path)
         layer = iface.addVectorLayer(vector_path, "traffic_zones", "ogr")
         if not layer:
-            print
-            "Layer failed to load!"
+            iface.messageBar().pushWarning('Desire Lines', 'Layer failed to load!')
 
     def centroids(self):
-        output_cent = os.getcwd()+r'\output.gpkg'
+        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
         file_name = 'ogr:dbname=\''+output_cent+'\' table="centroids" (geom)'
         traffic_select = QgsProject.instance().mapLayersByName('traffic_zones')
         input_traffic = traffic_select[0].dataProvider().dataSourceUri()
-        print(input_traffic)
         processing.run("native:centroids",
                        {'INPUT': input_traffic, 'ALL_PARTS': True,
                         'OUTPUT': file_name})
@@ -162,23 +153,45 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     def desirelines(self):
-        matr = self.mMapLayerComboBox.currentText()
-        cent = self.mMapLayerComboBox_2.currentText()
+        # Use layer().name() instead of currentText(): the latter includes
+        # the CRS suffix (e.g. "centroids [EPSG:4674]") when setShowCrs is on.
+        matr = self.mMapLayerComboBox.currentLayer().name()
+        cent_layer = self.mMapLayerComboBox_2.currentLayer()
+        cent = cent_layer.name()
         field = self.mFieldComboBox.currentField()
         field2 = self.mFieldComboBox_2.currentField()
         field3 = self.mFieldComboBox_3.currentField()
         field4 = self.mFieldComboBox_4.currentField()
-        output_cent = os.getcwd() + r'\output.gpkg'
+        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
         centroids_select = QgsProject.instance().mapLayersByName('centroids')
         input_centroids = centroids_select[0].dataProvider().dataSourceUri()
 
-        sql_query = f"SELECT {field}, {field2}, {field3}, make_line(a.geometry, b.geometry) FROM {matr} JOIN {cent} a ON {matr}.{field} = a.{field4} JOIN {cent} b ON {matr}.{field2} =  b.{field4} WHERE a.{field4} != b.{field4}"
+        # Quote identifiers so column/table names with spaces, digits, or
+        # special chars (e.g. "Carga Geral 2030 Otimista") parse correctly.
+        def q(name):
+            return '"' + name.replace('"', '""') + '"'
+
+        # SpatiaLite's make_line() loses SRID on virtual layers — wrap with
+        # SetSRID() so the output geometry carries a valid CRS into the GPKG.
+        centroids_crs = cent_layer.crs()
+        srid = centroids_crs.postgisSrid()
+
+        sql_query = (
+            f"SELECT {q(field)}, {q(field2)}, {q(field3)}, "
+            f"SetSRID(make_line(a.geometry, b.geometry), {srid}) AS geometry "
+            f"FROM {q(matr)} "
+            f"JOIN {q(cent)} a ON {q(matr)}.{q(field)} = a.{q(field4)} "
+            f"JOIN {q(cent)} b ON {q(matr)}.{q(field2)} = b.{q(field4)} "
+            f"WHERE a.{q(field4)} != b.{q(field4)}"
+        )
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="Desire_Lines" (geom)'
         processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
             input_centroids],
             'INPUT_QUERY': sql_query,
-            'INPUT_UID_FIELD': '', 'INPUT_GEOMETRY_FIELD': '', 'INPUT_GEOMETRY_TYPE': 0,
-            'INPUT_GEOMETRY_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
+            'INPUT_UID_FIELD': '',
+            'INPUT_GEOMETRY_FIELD': 'geometry',
+            'INPUT_GEOMETRY_TYPE': 3,
+            'INPUT_GEOMETRY_CRS': centroids_crs,
             'OUTPUT': file_name})
         add_table = output_cent + '|layername={}'.format('Desire_Lines')
         iface.addVectorLayer(add_table, 'Desire_Lines', 'ogr')
