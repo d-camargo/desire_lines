@@ -6,7 +6,7 @@
 name=Desire Lines
 qgisMinimumVersion=3.0
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.1.2
+version=0.2.0
 author=Diego Camargo
 email=dg.camargo@proton.me
 

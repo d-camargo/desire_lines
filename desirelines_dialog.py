@@ -37,12 +37,16 @@ from qgis.core import (
     QgsVectorFileWriter,
     QgsCoordinateTransformContext,
 )
+from qgis.gui import QgsFileWidget
 from qgis.utils import iface
 
 # Allow only safe characters in SQL identifiers (layer/field names) before
 # interpolating into the executesql query. Identifiers are user-chosen via
 # combo boxes, but we still constrain them to avoid SQL injection vectors.
-_SAFE_IDENT_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_ .\-]{0,127}$')
+# \w is Unicode-aware in Python 3, so accented characters (é, ç, ã...) and
+# other non-ASCII letters are accepted — only SQL-significant punctuation
+# like quotes, semicolons or parentheses are rejected.
+_SAFE_IDENT_RE = re.compile(r'^\w[\w .\-]{0,127}$')
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
@@ -60,6 +64,10 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.outputFile.setStorageMode(QgsFileWidget.SaveFile)
+        self.outputFile.setFilter('GeoPackage (*.gpkg)')
+        self.outputFile.setDialogTitle('Output GeoPackage')
+
         self.readCSV.clicked.connect(self.matrix)
         self.readV.clicked.connect(self.fvector)
         self.addCentroids.clicked.connect(self.centroids)
@@ -71,11 +79,60 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         self.makeDL.clicked.connect(self.desirelines)
         self.checkBox.setChecked(False)
 
+        # Live validation: keep the makeDL button disabled until matrix,
+        # centroids and all four fields are selected.
+        for combo in (self.mMapLayerComboBox, self.mMapLayerComboBox_2):
+            combo.layerChanged.connect(self._update_make_dl_state)
+        for combo in (self.mFieldComboBox, self.mFieldComboBox_2,
+                      self.mFieldComboBox_3, self.mFieldComboBox_4):
+            combo.fieldChanged.connect(self._update_make_dl_state)
+        self._update_make_dl_state()
+
+    def _output_path(self):
+        """Return the user-chosen output GPKG path, or a sensible fallback.
+
+        Fallback order: matrix CSV directory, vector file directory, or the
+        user's home directory. All cases return an absolute path ending in
+        output.gpkg.
+        """
+        path = (self.outputFile.filePath() or '').strip()
+        if path:
+            if not path.lower().endswith('.gpkg'):
+                path = path + '.gpkg'
+            return os.path.abspath(path)
+        for src in (self.matrixInsert.filePath(), self.vectorInsert.filePath()):
+            if src:
+                return os.path.join(os.path.dirname(src), 'output.gpkg')
+        return os.path.join(os.path.expanduser('~'), 'output.gpkg')
+
+    def _get_layer(self, name, action_hint):
+        """Look up a layer by name; show a clear message if missing."""
+        layers = QgsProject.instance().mapLayersByName(name)
+        if not layers:
+            iface.messageBar().pushCritical(
+                'Desire Lines',
+                'Layer {!r} not found. {}'.format(name, action_hint))
+            return None
+        return layers[0]
+
+    def _update_make_dl_state(self):
+        """Enable the makeDL button only when all required inputs are set."""
+        ready = bool(
+            self.mMapLayerComboBox.currentLayer()
+            and self.mMapLayerComboBox_2.currentLayer()
+            and self.mFieldComboBox.currentField()
+            and self.mFieldComboBox_2.currentField()
+            and self.mFieldComboBox_3.currentField()
+            and self.mFieldComboBox_4.currentField()
+        )
+        self.makeDL.setEnabled(ready)
+
     def matrix(self):
         matrix_path = self.matrixInsert.filePath()
-        mph = os.path.dirname(matrix_path)
-        os.chdir(mph)
-        # Exibir o widget dentro do QGIS
+        if not matrix_path:
+            iface.messageBar().pushWarning(
+                'Desire Lines', 'Select a CSV matrix file first.')
+            return
         if self.checkBox.isChecked() is True:
             if pd is None:
                 iface.messageBar().pushCritical(
@@ -83,6 +140,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
                     'pandas is required for wide-to-long conversion. '
                     'Install it in the QGIS Python environment and reload the plugin.')
                 return
+            mph = os.path.dirname(matrix_path)
             df = pd.read_csv(matrix_path, delimiter=';', skipinitialspace=True)
             df_melt = df.melt(id_vars='OD', var_name='Destino', value_name='Passageiros')
             df_melt.rename(columns={'OD': 'Origem'}, inplace=True)
@@ -92,7 +150,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         enc = 'windows-1252'
         uri = "file:///" + matrix_path + "?encoding={}&type=csv&delimiter={}&geomType=none".format(enc, ";")
 
-        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
+        output_cent = self._output_path()
         matrix = QgsVectorLayer(uri, 'matrix', 'delimitedtext')
         QgsVectorFileWriter.writeAsVectorFormatV3(
             layer=matrix,
@@ -104,15 +162,23 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def fvector(self):
         vector_path = self.vectorInsert.filePath()
+        if not vector_path:
+            iface.messageBar().pushWarning(
+                'Desire Lines', 'Select a vector file first.')
+            return
         layer = iface.addVectorLayer(vector_path, "traffic_zones", "ogr")
         if not layer:
             iface.messageBar().pushWarning('Desire Lines', 'Layer failed to load!')
 
     def centroids(self):
-        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
+        traffic = self._get_layer(
+            'traffic_zones',
+            'Load a traffic zones vector first (Read Vector button).')
+        if traffic is None:
+            return
+        output_cent = self._output_path()
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="centroids" (geom)'
-        traffic_select = QgsProject.instance().mapLayersByName('traffic_zones')
-        input_traffic = traffic_select[0].dataProvider().dataSourceUri()
+        input_traffic = traffic.dataProvider().dataSourceUri()
         processing.run("native:centroids",
                        {'INPUT': input_traffic, 'ALL_PARTS': True,
                         'OUTPUT': file_name})
@@ -164,9 +230,13 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         field2 = self.mFieldComboBox_2.currentField()
         field3 = self.mFieldComboBox_3.currentField()
         field4 = self.mFieldComboBox_4.currentField()
-        output_cent = os.path.join(os.getcwd(), 'output.gpkg')
-        centroids_select = QgsProject.instance().mapLayersByName('centroids')
-        input_centroids = centroids_select[0].dataProvider().dataSourceUri()
+        output_cent = self._output_path()
+        centroids = self._get_layer(
+            'centroids',
+            'Click "Add Centroids to Traffic Zones" first.')
+        if centroids is None:
+            return
+        input_centroids = centroids.dataProvider().dataSourceUri()
 
         # Reject any identifier that doesn't match the safe pattern before
         # we interpolate it into SQL. Identifiers come from QGIS combo boxes
@@ -178,7 +248,8 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
                 iface.messageBar().pushCritical(
                     'Desire Lines',
                     'Invalid layer or field name: {!r}. '
-                    'Use only letters, digits, spaces, underscores, dots or hyphens.'.format(name))
+                    'Use letters (including accents), digits, spaces, '
+                    'underscores, dots or hyphens — no quotes or semicolons.'.format(name))
                 return
 
         # Quote identifiers so column/table names with spaces, digits, or
