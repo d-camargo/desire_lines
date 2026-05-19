@@ -22,16 +22,14 @@
  ***************************************************************************/
  This script initializes the plugin, making it known to QGIS.
 """
-import os
-import sys
-
 # noinspection PyPep8Naming
+
+
 def classFactory(iface):  # pylint: disable=invalid-name
     """Load DesireLines class from file DesireLines.
 
     :param iface: A QGIS interface instance.
     :type iface: QgsInterface
     """
-    #
     from .desirelines import DesireLines
     return DesireLines(iface)

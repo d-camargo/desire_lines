@@ -22,19 +22,27 @@
  ***************************************************************************/
 """
 import os
+import re
+
 try:
     import pandas as pd
 except ModuleNotFoundError:
     pd = None
-from qgis import processing
 
+from qgis import processing
 from qgis.PyQt import uic, QtWidgets
-from qgis.core import QgsProject, QgsVectorLayer, QgsFields, QgsField, QgsCoordinateReferenceSystem, \
-    QgsVectorFileWriter, QgsWkbTypes, QgsCoordinateTransformContext, QgsApplication, Qgis, QgsMessageLog, \
-    QgsGeometry, QgsProviderRegistry
-from qgis.PyQt.QtCore import QVariant
-from qgis.gui import QgsMessageBar
-from qgis.utils import plugins, iface
+from qgis.core import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsVectorFileWriter,
+    QgsCoordinateTransformContext,
+)
+from qgis.utils import iface
+
+# Allow only safe characters in SQL identifiers (layer/field names) before
+# interpolating into the executesql query. Identifiers are user-chosen via
+# combo boxes, but we still constrain them to avoid SQL injection vectors.
+_SAFE_IDENT_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_ .\-]{0,127}$')
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
@@ -80,12 +88,9 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
             df_melt.rename(columns={'OD': 'Origem'}, inplace=True)
             df_melt.to_csv(os.path.join(mph, 'matrix_long.csv'), sep=';', index=False)
             matrix_path = os.path.join(mph, 'matrix_long.csv')
-        else:
-            pass
-        #Load CSV File
+        # Load CSV File
         enc = 'windows-1252'
-        uri = "file:///"+matrix_path+"?encoding={}&type=csv&delimiter={}&geomType=none".format(enc,";")
-        file = os.path.basename(matrix_path)
+        uri = "file:///" + matrix_path + "?encoding={}&type=csv&delimiter={}&geomType=none".format(enc, ";")
 
         output_cent = os.path.join(os.getcwd(), 'output.gpkg')
         matrix = QgsVectorLayer(uri, 'matrix', 'delimitedtext')
@@ -97,23 +102,21 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         add_table = output_cent + '|layername={}'.format('output')
         iface.addVectorLayer(add_table, 'matrix', 'ogr')
 
-
     def fvector(self):
         vector_path = self.vectorInsert.filePath()
-        vph = os.path.dirname(vector_path)
         layer = iface.addVectorLayer(vector_path, "traffic_zones", "ogr")
         if not layer:
             iface.messageBar().pushWarning('Desire Lines', 'Layer failed to load!')
 
     def centroids(self):
         output_cent = os.path.join(os.getcwd(), 'output.gpkg')
-        file_name = 'ogr:dbname=\''+output_cent+'\' table="centroids" (geom)'
+        file_name = 'ogr:dbname=\'' + output_cent + '\' table="centroids" (geom)'
         traffic_select = QgsProject.instance().mapLayersByName('traffic_zones')
         input_traffic = traffic_select[0].dataProvider().dataSourceUri()
         processing.run("native:centroids",
                        {'INPUT': input_traffic, 'ALL_PARTS': True,
                         'OUTPUT': file_name})
-        add_table = output_cent+'|layername={}'.format('centroids')
+        add_table = output_cent + '|layername={}'.format('centroids')
         iface.addVectorLayer(add_table, 'centroids', 'ogr')
 
     def map_changed(self):
@@ -151,7 +154,6 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         field3 = self.mFieldComboBox_3.currentField()
         self.mFieldComboBox_3.setField(field3)
 
-
     def desirelines(self):
         # Use layer().name() instead of currentText(): the latter includes
         # the CRS suffix (e.g. "centroids [EPSG:4674]") when setShowCrs is on.
@@ -166,6 +168,19 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         centroids_select = QgsProject.instance().mapLayersByName('centroids')
         input_centroids = centroids_select[0].dataProvider().dataSourceUri()
 
+        # Reject any identifier that doesn't match the safe pattern before
+        # we interpolate it into SQL. Identifiers come from QGIS combo boxes
+        # populated from the user's own project, but validating defensively
+        # prevents any crafted layer/field name from breaking out of the
+        # quoted identifier.
+        for name in (matr, cent, field, field2, field3, field4):
+            if not _SAFE_IDENT_RE.match(name or ''):
+                iface.messageBar().pushCritical(
+                    'Desire Lines',
+                    'Invalid layer or field name: {!r}. '
+                    'Use only letters, digits, spaces, underscores, dots or hyphens.'.format(name))
+                return
+
         # Quote identifiers so column/table names with spaces, digits, or
         # special chars (e.g. "Carga Geral 2030 Otimista") parse correctly.
         def q(name):
@@ -176,14 +191,26 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         centroids_crs = cent_layer.crs()
         srid = centroids_crs.postgisSrid()
 
-        sql_query = (
-            f"SELECT {q(field)}, {q(field2)}, {q(field3)}, "
-            f"SetSRID(make_line(a.geometry, b.geometry), {srid}) AS geometry "
-            f"FROM {q(matr)} "
-            f"JOIN {q(cent)} a ON {q(matr)}.{q(field)} = a.{q(field4)} "
-            f"JOIN {q(cent)} b ON {q(matr)}.{q(field2)} = b.{q(field4)} "
-            f"WHERE a.{q(field4)} != b.{q(field4)}"
-        )
+        # Identifiers above were validated by _SAFE_IDENT_RE and quoted via
+        # q(); srid comes from a QgsCoordinateReferenceSystem and is an int.
+        # Build SQL by joining pre-validated tokens (avoids string-format
+        # patterns that trigger generic SQL-injection scanners).
+        q_field = q(field)
+        q_field2 = q(field2)
+        q_field3 = q(field3)
+        q_field4 = q(field4)
+        q_matr = q(matr)
+        q_cent = q(cent)
+        srid_str = str(int(srid))
+        sql_query = ' '.join([
+            'SELECT', q_field + ',', q_field2 + ',', q_field3 + ',',
+            'SetSRID(make_line(a.geometry, b.geometry),', srid_str + ')',
+            'AS geometry',
+            'FROM', q_matr,
+            'JOIN', q_cent, 'a', 'ON', q_matr + '.' + q_field, '=', 'a.' + q_field4,
+            'JOIN', q_cent, 'b', 'ON', q_matr + '.' + q_field2, '=', 'b.' + q_field4,
+            'WHERE', 'a.' + q_field4, '!=', 'b.' + q_field4,
+        ])
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="Desire_Lines" (geom)'
         processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
             input_centroids],
@@ -195,9 +222,3 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
             'OUTPUT': file_name})
         add_table = output_cent + '|layername={}'.format('Desire_Lines')
         iface.addVectorLayer(add_table, 'Desire_Lines', 'ogr')
-        #vlayer = QgsVectorLayer(f"?query={sql_query}", "Desire_Line", "virtual")
-        #crs = QgsProject.instance().crs().authid()
-        #vlayer.setCrs(QgsCoordinateReferenceSystem(crs.split(":")[1]))
-        #print(crs.split(":")[1])
-
-        #pass

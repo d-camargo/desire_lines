@@ -28,14 +28,13 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
 
 # Initialize Qt resources from file resources.py
-from .resources import *
+from . import resources  # noqa: F401
 # Import the code for the dialog
 from .desirelines_dialog import DesireLinesDialog
 
 
 class DesireLines:
     """QGIS Plugin Implementation."""
-
 
     def __init__(self, iface):
         """Constructor.
@@ -88,18 +87,17 @@ class DesireLines:
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('DesireLines', message)
 
-
     def add_action(
-        self,
-        icon_path,
-        text,
-        callback,
-        enabled_flag=True,
-        add_to_menu=True,
-        add_to_toolbar=True,
-        status_tip=None,
-        whats_this=None,
-        parent=None):
+            self,
+            icon_path,
+            text,
+            callback,
+            enabled_flag=True,
+            add_to_menu=True,
+            add_to_toolbar=True,
+            status_tip=None,
+            whats_this=None,
+            parent=None):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -184,13 +182,12 @@ class DesireLines:
                 action)
             self.iface.removeToolBarIcon(action)
 
-
     def run(self):
         """Run method that performs all the real work"""
 
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
+        if self.first_start is True:
             self.first_start = False
             self.dlg = DesireLinesDialog()
             self.dlg.mMapLayerComboBox_2.setShowCrs(True)
