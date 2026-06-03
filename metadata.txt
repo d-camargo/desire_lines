@@ -19,8 +19,15 @@ repository=https://github.com/d-camargo/desire_lines
 # Recommended items:
 
 hasProcessingProvider=no
-# Uncomment the following line and add your changelog:
-# changelog=
+changelog=
+    0.2.0
+    - New "AoN (Delaunay)" tab: All-or-Nothing allocation over a Delaunay network of zone centroids, following least-cost paths. Optional "Split by direction" output (flow_ab / flow_ba).
+    - Automatic metric CRS selection for routing (UTM zone, or SIRGAS 2000 / Brazil Albers EPSG:10857 for wide areas).
+    - Inputs can be assigned from existing project layers; no longer tied to imported-layer names.
+    - Configurable output GeoPackage with sensible fallback, plus live input validation.
+    - Desire lines and AoN flows styled with a graduated (Natural Breaks) renderer, fully editable from the Symbology panel.
+    0.1.0
+    - Initial release: build OD desire lines from a CSV matrix and traffic-zone centroids.
 
 # Tags are comma separated with spaces allowed
 tags=python
