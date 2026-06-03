@@ -5,6 +5,7 @@ __pycache__/
 
 # QGIS plugin build artifacts
 *.qm
+*.zip
 
 # Local test data and output
 test/*.gpkg
