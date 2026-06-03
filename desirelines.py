@@ -195,10 +195,23 @@ class DesireLines:
             self.dlg.vectorInsert.setFilter("All files (*.*);;GPKG (*.gpkg);;SHP (*.shp)")
             self.dlg.mMapLayerComboBox_2.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg.mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.NoGeometry)
+            # Tab 1 — optional existing traffic-zones layer (polygons). Empty
+            # by default so the file-import flow ('traffic_zones') still works.
+            self.dlg.zonesCombo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+            self.dlg.zonesCombo.setAllowEmptyLayer(True)
+            self.dlg.zonesCombo.setCurrentIndex(0)
             self.dlg.mFieldComboBox.setFilters(QgsFieldProxyModel.Int)
             self.dlg.mFieldComboBox_2.setFilters(QgsFieldProxyModel.Int)
             self.dlg.mFieldComboBox_3.setFilters(QgsFieldProxyModel.Double)
             self.dlg.mFieldComboBox_4.setFilters(QgsFieldProxyModel.Int)
+            # AoN (Delaunay) tab — same filtering scheme as the Desire Lines tab.
+            self.dlg.aonCentroidsCombo.setShowCrs(True)
+            self.dlg.aonCentroidsCombo.setFilters(QgsMapLayerProxyModel.PointLayer)
+            self.dlg.aonMatrixCombo.setFilters(QgsMapLayerProxyModel.NoGeometry)
+            self.dlg.aonOriginField.setFilters(QgsFieldProxyModel.Int)
+            self.dlg.aonDestField.setFilters(QgsFieldProxyModel.Int)
+            self.dlg.aonValueField.setFilters(QgsFieldProxyModel.Double)
+            self.dlg.aonZoneIdField.setFilters(QgsFieldProxyModel.Int)
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
