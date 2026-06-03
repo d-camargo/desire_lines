@@ -31,14 +31,24 @@ except ModuleNotFoundError:
 
 from qgis import processing
 from qgis.PyQt import uic, QtWidgets
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QApplication, QProgressBar
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsVectorLayer,
     QgsVectorFileWriter,
+    QgsCoordinateTransform,
     QgsCoordinateTransformContext,
+    QgsLineSymbol,
+    QgsGraduatedSymbolRenderer,
+    QgsGradientColorRamp,
 )
 from qgis.gui import QgsFileWidget
 from qgis.utils import iface
+
+from . import aon
 
 # Allow only safe characters in SQL identifiers (layer/field names) before
 # interpolating into the executesql query. Identifiers are user-chosen via
@@ -87,6 +97,20 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
                       self.mFieldComboBox_3, self.mFieldComboBox_4):
             combo.fieldChanged.connect(self._update_make_dl_state)
         self._update_make_dl_state()
+
+        # --- AoN (Delaunay) tab ---
+        self.aonMatrixCombo.layerChanged.connect(self._aon_matrix_changed)
+        self.aonCentroidsCombo.layerChanged.connect(self._aon_centroids_changed)
+        self.runAoN.clicked.connect(self.run_aon)
+        for combo in (self.aonMatrixCombo, self.aonCentroidsCombo):
+            combo.layerChanged.connect(self._update_aon_state)
+        for combo in (self.aonOriginField, self.aonDestField,
+                      self.aonValueField, self.aonZoneIdField):
+            combo.fieldChanged.connect(self._update_aon_state)
+        # Initialise field combos against whatever the layer combos default to.
+        self._aon_matrix_changed()
+        self._aon_centroids_changed()
+        self._update_aon_state()
 
     def _output_path(self):
         """Return the user-chosen output GPKG path, or a sensible fallback.
@@ -169,11 +193,20 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         layer = iface.addVectorLayer(vector_path, "traffic_zones", "ogr")
         if not layer:
             iface.messageBar().pushWarning('Desire Lines', 'Layer failed to load!')
+            return
+        # Select the freshly imported layer in the zones combo so the file
+        # import and the "existing layer" path stay in sync.
+        self.zonesCombo.setLayer(layer)
 
     def centroids(self):
-        traffic = self._get_layer(
-            'traffic_zones',
-            'Load a traffic zones vector first (Read Vector button).')
+        # Prefer an existing layer the user assigned via the combo; fall back
+        # to the file-imported 'traffic_zones' when the combo is left empty.
+        traffic = self.zonesCombo.currentLayer()
+        if traffic is None:
+            traffic = self._get_layer(
+                'traffic_zones',
+                'Pick a traffic-zones layer in the combo, or load one with '
+                'the Read Vector button.')
         if traffic is None:
             return
         output_cent = self._output_path()
@@ -231,12 +264,10 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         field3 = self.mFieldComboBox_3.currentField()
         field4 = self.mFieldComboBox_4.currentField()
         output_cent = self._output_path()
-        centroids = self._get_layer(
-            'centroids',
-            'Click "Add Centroids to Traffic Zones" first.')
-        if centroids is None:
-            return
-        input_centroids = centroids.dataProvider().dataSourceUri()
+        # Use the centroids layer chosen in the combo directly — no longer
+        # tied to a layer literally named 'centroids', so any existing point
+        # layer in the project works.
+        input_centroids = cent_layer.dataProvider().dataSourceUri()
 
         # Reject any identifier that doesn't match the safe pattern before
         # we interpolate it into SQL. Identifiers come from QGIS combo boxes
@@ -273,7 +304,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         q_matr = q(matr)
         q_cent = q(cent)
         srid_str = str(int(srid))
-        sql_query = ' '.join([
+        sql_tokens = [
             'SELECT', q_field + ',', q_field2 + ',', q_field3 + ',',
             'SetSRID(make_line(a.geometry, b.geometry),', srid_str + ')',
             'AS geometry',
@@ -281,15 +312,232 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
             'JOIN', q_cent, 'a', 'ON', q_matr + '.' + q_field, '=', 'a.' + q_field4,
             'JOIN', q_cent, 'b', 'ON', q_matr + '.' + q_field2, '=', 'b.' + q_field4,
             'WHERE', 'a.' + q_field4, '!=', 'b.' + q_field4,
-        ])
+        ]
+        sql_query = ' '.join(sql_tokens)
+
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="Desire_Lines" (geom)'
-        processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
-            input_centroids],
-            'INPUT_QUERY': sql_query,
-            'INPUT_UID_FIELD': '',
-            'INPUT_GEOMETRY_FIELD': 'geometry',
-            'INPUT_GEOMETRY_TYPE': 3,
-            'INPUT_GEOMETRY_CRS': centroids_crs,
-            'OUTPUT': file_name})
-        add_table = output_cent + '|layername={}'.format('Desire_Lines')
-        iface.addVectorLayer(add_table, 'Desire_Lines', 'ogr')
+        progress_widget = self._push_progress('Generating desire lines…')
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
+                input_centroids],
+                'INPUT_QUERY': sql_query,
+                'INPUT_UID_FIELD': '',
+                'INPUT_GEOMETRY_FIELD': 'geometry',
+                'INPUT_GEOMETRY_TYPE': 3,
+                'INPUT_GEOMETRY_CRS': centroids_crs,
+                'OUTPUT': file_name})
+            add_table = output_cent + '|layername={}'.format('Desire_Lines')
+            dl_layer = iface.addVectorLayer(add_table, 'Desire_Lines', 'ogr')
+            if dl_layer:
+                self._apply_desire_lines_style(dl_layer, field3)
+        finally:
+            QApplication.restoreOverrideCursor()
+            iface.messageBar().popWidget(progress_widget)
+
+    def _push_progress(self, text):
+        """Show an indeterminate (pulsing) progress bar in the QGIS message bar."""
+        mb = iface.messageBar()
+        widget = mb.createMessage('Desire Lines', text)
+        pbar = QProgressBar()
+        pbar.setMinimum(0)
+        pbar.setMaximum(0)
+        pbar.setTextVisible(False)
+        widget.layout().addWidget(pbar)
+        mb.pushWidget(widget, Qgis.Info)
+        QApplication.processEvents()
+        return widget
+
+    def _apply_desire_lines_style(self, layer, value_field):
+        """Style lines with a graduated renderer (classes) on value_field.
+
+        Class-based graduated symbology varying the stroke width (thicker =
+        higher flow). Unlike a data-defined width override, this is fully
+        editable from the Symbology panel: the user can add/remove classes
+        and change ranges, widths and colours directly.
+        """
+        base = QgsLineSymbol.createSimple({
+            'color': '0,90,180,160',
+            'width': '0.5',
+        })
+        # A ramp is required by createRenderer; kept light->dark blue in case
+        # the user later switches the renderer back to colour-graduated.
+        ramp = QgsGradientColorRamp(QColor(198, 219, 239), QColor(8, 48, 107))
+        # Natural Breaks (Jenks): groups similar values and splits at natural
+        # gaps — a good default for flow maps.
+        renderer = QgsGraduatedSymbolRenderer.createRenderer(
+            layer, value_field, 5,
+            QgsGraduatedSymbolRenderer.Jenks, base, ramp)
+        # Encode flow as stroke width (single colour) so it reads like a flow
+        # map while staying editable class-by-class in the panel.
+        renderer.setGraduatedMethod(QgsGraduatedSymbolRenderer.GraduatedSize)
+        renderer.setSymbolSizes(0.2, 3.0)
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
+
+    # ------------------------------------------------------------------ #
+    # AoN (Delaunay) tab                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _aon_matrix_changed(self):
+        """Point the OD field combos at the selected matrix layer."""
+        layer = self.aonMatrixCombo.currentLayer()
+        for combo in (self.aonOriginField, self.aonDestField,
+                      self.aonValueField):
+            combo.setLayer(layer)
+
+    def _aon_centroids_changed(self):
+        """Point the traffic-id field combo at the selected centroids layer."""
+        self.aonZoneIdField.setLayer(self.aonCentroidsCombo.currentLayer())
+
+    def _update_aon_state(self):
+        """Enable the AoN button only when all required inputs are set."""
+        ready = bool(
+            self.aonMatrixCombo.currentLayer()
+            and self.aonCentroidsCombo.currentLayer()
+            and self.aonOriginField.currentField()
+            and self.aonDestField.currentField()
+            and self.aonValueField.currentField()
+            and self.aonZoneIdField.currentField()
+        )
+        self.runAoN.setEnabled(ready)
+
+    @staticmethod
+    def _zone_key(value):
+        """Normalise a zone id so matrix and centroid ids compare equal.
+
+        Ids are usually integers but may arrive as floats ("12.0") or strings
+        depending on the provider; coerce to int when possible, else fall back
+        to the stripped string.
+        """
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return str(value).strip()
+
+    def run_aon(self):
+        """All-or-Nothing allocation over the Delaunay network of centroids."""
+        matrix_layer = self.aonMatrixCombo.currentLayer()
+        cent_layer = self.aonCentroidsCombo.currentLayer()
+        origin_field = self.aonOriginField.currentField()
+        dest_field = self.aonDestField.currentField()
+        value_field = self.aonValueField.currentField()
+        zone_id_field = self.aonZoneIdField.currentField()
+
+        # 1. Read centroids: zone id -> point (in the layer's own CRS).
+        src_crs = cent_layer.crs()
+        zone_index = {}            # zone key -> index into centroid_points
+        centroid_points = []       # QgsPointXY in src_crs
+        min_lon = min_lat = float('inf')
+        max_lon = max_lat = float('-inf')
+        for feat in cent_layer.getFeatures():
+            geom = feat.geometry()
+            if geom is None or geom.isEmpty():
+                continue
+            key = self._zone_key(feat[zone_id_field])
+            if key is None or key in zone_index:
+                continue
+            pt = geom.asPoint()
+            zone_index[key] = len(centroid_points)
+            centroid_points.append(pt)
+            min_lon, max_lon = min(min_lon, pt.x()), max(max_lon, pt.x())
+            min_lat, max_lat = min(min_lat, pt.y()), max(max_lat, pt.y())
+
+        if len(centroid_points) < 3:
+            iface.messageBar().pushCritical(
+                'Desire Lines',
+                'Need at least 3 valid centroids to build a Delaunay network.')
+            return
+
+        # 2. Pick a metric CRS (UTM zone / Brazil Albers) per the agreed rules.
+        metric_crs, crs_note = aon.pick_metric_crs(
+            src_crs, (min_lon, min_lat, max_lon, max_lat))
+        if metric_crs is None:
+            iface.messageBar().pushCritical('Desire Lines', crs_note)
+            return
+
+        # 3. Reproject centroids into the metric CRS.
+        if metric_crs.authid() != src_crs.authid():
+            xform = QgsCoordinateTransform(
+                src_crs, metric_crs, QgsProject.instance())
+            centroid_points = [xform.transform(p) for p in centroid_points]
+
+        # 4. Read the OD demand from the matrix layer.
+        od_pairs = []
+        missing = 0
+        for feat in matrix_layer.getFeatures():
+            o_idx = zone_index.get(self._zone_key(feat[origin_field]))
+            d_idx = zone_index.get(self._zone_key(feat[dest_field]))
+            if o_idx is None or d_idx is None:
+                missing += 1
+                continue
+            try:
+                flow = float(feat[value_field])
+            except (TypeError, ValueError):
+                missing += 1
+                continue
+            od_pairs.append((o_idx, d_idx, flow))
+
+        if not od_pairs:
+            iface.messageBar().pushCritical(
+                'Desire Lines',
+                'No OD pairs matched the centroid ids. Check that Origin, '
+                'Destination and Traffic ID refer to the same id scheme.')
+            return
+
+        # 5. Build the Delaunay network and run the allocation.
+        progress_widget = self._push_progress('Allocating (AoN over Delaunay)…')
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            point_layer = aon.points_to_layer(centroid_points, metric_crs)
+            edges_layer = aon.build_delaunay_edges(point_layer)
+            edge_flows, stats = aon.allocate_aon(
+                edges_layer, centroid_points, od_pairs, metric_crs)
+            out_mem = aon.edge_flows_to_layer(
+                edge_flows, metric_crs,
+                directional=self.aonDirectional.isChecked())
+            out_layer = self._write_layer_to_gpkg(out_mem, 'aon_flows')
+            if out_layer:
+                self._apply_desire_lines_style(out_layer, 'flow')
+        finally:
+            QApplication.restoreOverrideCursor()
+            iface.messageBar().popWidget(progress_widget)
+
+        # 6. Report what happened (CRS choice, allocation and any losses).
+        notes = []
+        if stats['unreachable']:
+            notes.append('{} unreachable (disconnected graph)'.format(
+                stats['unreachable']))
+        if missing:
+            notes.append('{} matrix rows had unknown ids'.format(missing))
+        if stats['skipped']:
+            notes.append('{} skipped'.format(stats['skipped']))
+        suffix = ' — ' + '; '.join(notes) if notes else ''
+        iface.messageBar().pushSuccess(
+            'Desire Lines',
+            'AoN done: {} pairs allocated over {} edges using {}{}'.format(
+                stats['allocated'], len(edge_flows), crs_note, suffix))
+
+    def _write_layer_to_gpkg(self, layer, table):
+        """Write a memory layer as a table into the output GeoPackage.
+
+        Uses CreateOrOverwriteLayer so the new table is added alongside the
+        existing ones (matrix, centroids, Desire_Lines) instead of replacing
+        the whole file.
+        """
+        out_path = self._output_path()
+        options = QgsVectorFileWriter.SaveVectorOptions()
+        options.driverName = 'GPKG'
+        options.layerName = table
+        if os.path.exists(out_path):
+            options.actionOnExistingFile = \
+                QgsVectorFileWriter.CreateOrOverwriteLayer
+        QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, out_path, QgsProject.instance().transformContext(), options)
+        add_table = out_path + '|layername={}'.format(table)
+        return iface.addVectorLayer(add_table, table, 'ogr')

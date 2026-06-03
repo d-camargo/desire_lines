@@ -104,6 +104,36 @@
           </widget>
          </item>
          <item>
+          <spacer name="vectorButtonsSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_zones_existing">
+         <property name="text">
+          <string>…or assign an existing traffic-zones layer from the project (leave empty to use the imported file above):</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QgsMapLayerComboBox" name="zonesCombo"/>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="addCentroidsLayout">
+         <item>
           <widget class="QPushButton" name="addCentroids">
            <property name="text">
             <string>Add Centroids to Traffic Zones</string>
@@ -111,7 +141,7 @@
           </widget>
          </item>
          <item>
-          <spacer name="vectorButtonsSpacer">
+          <spacer name="addCentroidsSpacer">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
            </property>
@@ -311,6 +341,195 @@
          </item>
          <item>
           <spacer name="makeDLRightSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_3">
+      <attribute name="title">
+       <string>AoN (Delaunay)</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="tab3Layout">
+       <item>
+        <widget class="QLabel" name="aonInfo">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="text">
+          <string>All-or-Nothing allocation over a simplified Delaunay network built on the zone centroids. The whole flow of each OD pair follows its single least-cost path. This is a topological abstraction of demand over zone neighbourhood — not a real road-network loading.</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QGridLayout" name="aonGrid">
+         <item row="0" column="0">
+          <widget class="QLabel" name="aonLabelMatrix">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Matrix</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLabel" name="aonLabelCentroids">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Centroids</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QgsMapLayerComboBox" name="aonMatrixCombo"/>
+         </item>
+         <item row="1" column="1">
+          <widget class="QgsMapLayerComboBox" name="aonCentroidsCombo"/>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="aonLabelOrigin">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Origin</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLabel" name="aonLabelZoneId">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Traffic ID</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QgsFieldComboBox" name="aonOriginField"/>
+         </item>
+         <item row="3" column="1">
+          <widget class="QgsFieldComboBox" name="aonZoneIdField"/>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="aonLabelDest">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Destination</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QgsFieldComboBox" name="aonDestField"/>
+         </item>
+         <item row="6" column="0">
+          <widget class="QLabel" name="aonLabelValue">
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Value (flow)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="0">
+          <widget class="QgsFieldComboBox" name="aonValueField"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="aonDirectional">
+         <property name="toolTip">
+          <string>Keep both travel directions per segment as separate fields (flow_ab = volume along the drawn A→B direction, flow_ba = the reverse). Unchecked: a single flow field with the combined total.</string>
+         </property>
+         <property name="text">
+          <string>Split by direction (flow_ab / flow_ba)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="tab3MiddleSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="runAoNLayout">
+         <item>
+          <spacer name="runAoNLeftSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="runAoN">
+           <property name="minimumSize">
+            <size>
+             <width>200</width>
+             <height>32</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Allocate (AoN)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="runAoNRightSpacer">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
            </property>
