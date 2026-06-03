@@ -104,13 +104,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="addCentroids">
-           <property name="text">
-            <string>Add Centroids to Traffic Zones</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <spacer name="vectorButtonsSpacer">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
@@ -137,6 +130,30 @@
        </item>
        <item>
         <widget class="QgsMapLayerComboBox" name="zonesCombo"/>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="addCentroidsLayout">
+         <item>
+          <widget class="QPushButton" name="addCentroids">
+           <property name="text">
+            <string>Add Centroids to Traffic Zones</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="addCentroidsSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QLabel" name="label_output">
