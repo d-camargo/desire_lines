@@ -32,6 +32,7 @@ except ModuleNotFoundError:
 from qgis import processing
 from qgis.PyQt import uic, QtWidgets
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QApplication, QProgressBar
 from qgis.core import (
     Qgis,
@@ -41,8 +42,8 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsCoordinateTransformContext,
     QgsLineSymbol,
-    QgsProperty,
-    QgsSymbolLayer,
+    QgsGraduatedSymbolRenderer,
+    QgsGradientColorRamp,
 )
 from qgis.gui import QgsFileWidget
 from qgis.utils import iface
@@ -348,23 +349,30 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         return widget
 
     def _apply_desire_lines_style(self, layer, value_field):
-        """Style desire lines with stroke width proportional to value_field.
+        """Style lines with a graduated renderer (classes) on value_field.
 
-        Uses a data-defined width with scale_linear() so the symbology
-        adapts to the actual min/max of the layer without precomputing
-        class boundaries.
+        Class-based graduated symbology varying the stroke width (thicker =
+        higher flow). Unlike a data-defined width override, this is fully
+        editable from the Symbology panel: the user can add/remove classes
+        and change ranges, widths and colours directly.
         """
-        symbol = QgsLineSymbol.createSimple({
+        base = QgsLineSymbol.createSimple({
             'color': '0,90,180,160',
             'width': '0.5',
         })
-        expr = 'scale_linear("{f}", minimum("{f}"), maximum("{f}"), 0.2, 3.0)'.format(
-            f=value_field.replace('"', '""'))
-        symbol.symbolLayer(0).setDataDefinedProperty(
-            QgsSymbolLayer.PropertyStrokeWidth,
-            QgsProperty.fromExpression(expr),
-        )
-        layer.renderer().setSymbol(symbol)
+        # A ramp is required by createRenderer; kept light->dark blue in case
+        # the user later switches the renderer back to colour-graduated.
+        ramp = QgsGradientColorRamp(QColor(198, 219, 239), QColor(8, 48, 107))
+        # Natural Breaks (Jenks): groups similar values and splits at natural
+        # gaps — a good default for flow maps.
+        renderer = QgsGraduatedSymbolRenderer.createRenderer(
+            layer, value_field, 5,
+            QgsGraduatedSymbolRenderer.Jenks, base, ramp)
+        # Encode flow as stroke width (single colour) so it reads like a flow
+        # map while staying editable class-by-class in the panel.
+        renderer.setGraduatedMethod(QgsGraduatedSymbolRenderer.GraduatedSize)
+        renderer.setSymbolSizes(0.2, 3.0)
+        layer.setRenderer(renderer)
         layer.triggerRepaint()
 
     # ------------------------------------------------------------------ #

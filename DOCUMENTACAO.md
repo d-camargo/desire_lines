@@ -133,14 +133,23 @@ Detalhes importantes:
 
 ### 3.3 Estilo (`_apply_desire_lines_style`)
 
-Largura de traço **data-defined** proporcional ao valor, sem classes fixas:
+**Renderer graduado por classes** (`QgsGraduatedSymbolRenderer`) sobre o campo de
+valor, variando a **espessura do traço** (mais grosso = maior fluxo):
 
-```text
-scale_linear("<campo>", minimum("<campo>"), maximum("<campo>"), 0.2, 3.0)
-```
+- **5 classes**, método **Natural Breaks (Jenks)** — agrupa valores parecidos e
+  quebra nas lacunas naturais; bom padrão para mapas de fluxo.
+- `setGraduatedMethod(GraduatedSize)` + `setSymbolSizes(0.2, 3.0)`: a espessura
+  varia por classe; cor única (azul `0,90,180,160`). Uma rampa azul claro→escuro
+  é passada ao `createRenderer` apenas porque é exigida — fica disponível caso o
+  usuário troque depois para graduação **por cor** no painel.
 
-Cor base `0,90,180,160` (azul translúcido). Mesma função estiliza o `aon_flows`
-pelo campo `flow`.
+> **Por que classes (e não *data-defined width*)?** A versão anterior usava uma
+> sobreposição definida por dados (`scale_linear`) na largura, que o painel de
+> simbologia **não deixava editar** (o override "vencia" o valor manual). Com o
+> renderer graduado, o usuário edita classes, faixas, larguras e cores
+> diretamente no painel.
+
+A mesma função estiliza o `aon_flows` pelo campo `flow`.
 
 ---
 
