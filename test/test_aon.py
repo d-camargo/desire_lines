@@ -25,23 +25,26 @@ class PickMetricCrsTest(unittest.TestCase):
 
     def test_already_metric_is_passthrough(self):
         src = QgsCoordinateReferenceSystem.fromEpsgId(32723)
-        crs, note = aon.pick_metric_crs(src, (200000, 7700000, 250000, 7800000))
+        crs, reason = aon.pick_metric_crs(src, (200000, 7700000, 250000, 7800000))
         self.assertEqual(crs.authid(), 'EPSG:32723')
-        self.assertIn('metric', note)
+        self.assertEqual(reason['code'], 'already_metric')
 
     def test_geographic_single_zone_gets_utm(self):
         src = QgsCoordinateReferenceSystem.fromEpsgId(4674)  # SIRGAS 2000
         # A small area in Minas Gerais — well inside UTM zone 23S.
-        crs, note = aon.pick_metric_crs(src, (-44.0, -20.0, -43.5, -19.5))
+        crs, reason = aon.pick_metric_crs(src, (-44.0, -20.0, -43.5, -19.5))
         self.assertEqual(crs.authid(), 'EPSG:32723')
-        self.assertIn('UTM', note)
+        self.assertEqual(reason['code'], 'utm')
+        self.assertEqual(reason.get('zone'), 23)
+        self.assertEqual(reason.get('epsg'), 32723)
 
     def test_geographic_multi_zone_gets_albers(self):
         src = QgsCoordinateReferenceSystem.fromEpsgId(4674)
         # West-to-east span crossing more than one UTM zone.
-        crs, note = aon.pick_metric_crs(src, (-53.0, -22.0, -40.0, -2.0))
+        crs, reason = aon.pick_metric_crs(src, (-53.0, -22.0, -40.0, -2.0))
         self.assertTrue(crs.isValid())
-        self.assertIn('Albers', note)
+        self.assertEqual(reason['code'], 'albers')
+        self.assertEqual(reason.get('epsg'), 10857)
 
 
 class AllocateAonTest(unittest.TestCase):

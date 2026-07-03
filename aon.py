@@ -72,9 +72,9 @@ def pick_metric_crs(src_crs, extent):
     :param src_crs: source CRS of the centroids (``QgsCoordinateReferenceSystem``).
     :param extent: (min_lon, min_lat, max_lon, max_lat) of the centroids,
         expressed in ``src_crs`` units.
-    :returns: (target_crs, note). ``target_crs`` is ``None`` (with an
-        explanatory ``note``) when no valid metric CRS could be determined and
-        the caller should ask the user for a metric (UTM) layer.
+    :returns: (target_crs, reason). ``target_crs`` is ``None`` (with an
+        explanatory ``reason`` dict) when no valid metric CRS could be determined
+        and the caller should ask the user for a metric (UTM) layer.
 
     Rules (decided with the user):
       * src already projected/metric  -> use as-is.
@@ -83,7 +83,7 @@ def pick_metric_crs(src_crs, extent):
         crosses the equator
     """
     if not src_crs.isGeographic():
-        return src_crs, 'source CRS is already metric'
+        return src_crs, {'code': 'already_metric'}
 
     min_lon, min_lat, max_lon, max_lat = extent
     zone_min = _utm_zone(min_lon)
@@ -94,15 +94,14 @@ def pick_metric_crs(src_crs, extent):
         epsg = (32600 if min_lat >= 0 else 32700) + zone_min
         crs = QgsCoordinateReferenceSystem.fromEpsgId(epsg)
         if crs.isValid():
-            return crs, 'auto UTM zone {} (EPSG:{})'.format(zone_min, epsg)
+            return crs, {'code': 'utm', 'zone': zone_min, 'epsg': epsg}
         # fall through to Albers if the UTM EPSG is somehow unavailable
 
     crs = _brazil_albers()
     if crs.isValid():
-        return crs, 'Brazil Albers (EPSG:{})'.format(BRAZIL_ALBERS_EPSG)
+        return crs, {'code': 'albers', 'epsg': BRAZIL_ALBERS_EPSG}
 
-    return None, ('could not determine a metric CRS automatically; reproject '
-                  'the centroids to a metric system (UTM) and try again')
+    return None, {'code': 'no_metric_crs'}
 
 
 # --- Delaunay network -------------------------------------------------------

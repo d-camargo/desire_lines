@@ -135,7 +135,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         if not layers:
             iface.messageBar().pushCritical(
                 'Desire Lines',
-                'Layer {!r} not found. {}'.format(name, action_hint))
+                self.tr('Layer {!r} not found. {}').format(name, action_hint))
             return None
         return layers[0]
 
@@ -155,14 +155,14 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         matrix_path = self.matrixInsert.filePath()
         if not matrix_path:
             iface.messageBar().pushWarning(
-                'Desire Lines', 'Select a CSV matrix file first.')
+                'Desire Lines', self.tr('Select a CSV matrix file first.'))
             return
         if self.checkBox.isChecked() is True:
             if pd is None:
                 iface.messageBar().pushCritical(
                     'Desire Lines',
-                    'pandas is required for wide-to-long conversion. '
-                    'Install it in the QGIS Python environment and reload the plugin.')
+                    self.tr('pandas is required for wide-to-long conversion. '
+                            'Install it in the QGIS Python environment and reload the plugin.'))
                 return
             mph = os.path.dirname(matrix_path)
             df = pd.read_csv(matrix_path, delimiter=';', skipinitialspace=True)
@@ -188,11 +188,11 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         vector_path = self.vectorInsert.filePath()
         if not vector_path:
             iface.messageBar().pushWarning(
-                'Desire Lines', 'Select a vector file first.')
+                'Desire Lines', self.tr('Select a vector file first.'))
             return
         layer = iface.addVectorLayer(vector_path, "traffic_zones", "ogr")
         if not layer:
-            iface.messageBar().pushWarning('Desire Lines', 'Layer failed to load!')
+            iface.messageBar().pushWarning('Desire Lines', self.tr('Layer failed to load!'))
             return
         # Select the freshly imported layer in the zones combo so the file
         # import and the "existing layer" path stay in sync.
@@ -278,9 +278,9 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
             if not _SAFE_IDENT_RE.match(name or ''):
                 iface.messageBar().pushCritical(
                     'Desire Lines',
-                    'Invalid layer or field name: {!r}. '
-                    'Use letters (including accents), digits, spaces, '
-                    'underscores, dots or hyphens — no quotes or semicolons.'.format(name))
+                    self.tr('Invalid layer or field name: {!r}. '
+                            'Use letters (including accents), digits, spaces, '
+                            'underscores, dots or hyphens — no quotes or semicolons.').format(name))
                 return
 
         # Quote identifiers so column/table names with spaces, digits, or
@@ -316,7 +316,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         sql_query = ' '.join(sql_tokens)
 
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="Desire_Lines" (geom)'
-        progress_widget = self._push_progress('Generating desire lines…')
+        progress_widget = self._push_progress(self.tr('Generating desire lines…'))
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
@@ -451,14 +451,31 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         if len(centroid_points) < 3:
             iface.messageBar().pushCritical(
                 'Desire Lines',
-                'Need at least 3 valid centroids to build a Delaunay network.')
+                self.tr('Need at least 3 valid centroids to build a Delaunay network.'))
             return
 
         # 2. Pick a metric CRS (UTM zone / Brazil Albers) per the agreed rules.
-        metric_crs, crs_note = aon.pick_metric_crs(
+        metric_crs, reason = aon.pick_metric_crs(
             src_crs, (min_lon, min_lat, max_lon, max_lat))
+
+        # Map the reason dictionary to a translated string
+        code = reason.get('code')
+        if code == 'already_metric':
+            crs_desc = self.tr('source CRS is already metric')
+        elif code == 'utm':
+            crs_desc = self.tr('auto UTM zone {} (EPSG:{})').format(
+                reason.get('zone'), reason.get('epsg'))
+        elif code == 'albers':
+            crs_desc = self.tr('Brazil Albers (EPSG:{})').format(
+                reason.get('epsg'))
+        elif code == 'no_metric_crs':
+            crs_desc = self.tr('could not determine a metric CRS automatically; '
+                               'reproject the centroids to a metric system (UTM) and try again')
+        else:
+            crs_desc = ''
+
         if metric_crs is None:
-            iface.messageBar().pushCritical('Desire Lines', crs_note)
+            iface.messageBar().pushCritical('Desire Lines', crs_desc)
             return
 
         # 3. Reproject centroids into the metric CRS.
@@ -486,12 +503,12 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         if not od_pairs:
             iface.messageBar().pushCritical(
                 'Desire Lines',
-                'No OD pairs matched the centroid ids. Check that Origin, '
-                'Destination and Traffic ID refer to the same id scheme.')
+                self.tr('No OD pairs matched the centroid ids. Check that Origin, '
+                        'Destination and Traffic ID refer to the same id scheme.'))
             return
 
         # 5. Build the Delaunay network and run the allocation.
-        progress_widget = self._push_progress('Allocating (AoN over Delaunay)…')
+        progress_widget = self._push_progress(self.tr('Allocating (AoN over Delaunay)…'))
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             point_layer = aon.points_to_layer(centroid_points, metric_crs)
@@ -511,17 +528,17 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         # 6. Report what happened (CRS choice, allocation and any losses).
         notes = []
         if stats['unreachable']:
-            notes.append('{} unreachable (disconnected graph)'.format(
+            notes.append(self.tr('{} unreachable (disconnected graph)').format(
                 stats['unreachable']))
         if missing:
-            notes.append('{} matrix rows had unknown ids'.format(missing))
+            notes.append(self.tr('{} matrix rows had unknown ids').format(missing))
         if stats['skipped']:
-            notes.append('{} skipped'.format(stats['skipped']))
+            notes.append(self.tr('{} skipped').format(stats['skipped']))
         suffix = ' — ' + '; '.join(notes) if notes else ''
         iface.messageBar().pushSuccess(
             'Desire Lines',
-            'AoN done: {} pairs allocated over {} edges using {}{}'.format(
-                stats['allocated'], len(edge_flows), crs_note, suffix))
+            self.tr('AoN done: {} pairs allocated over {} edges using {}{}').format(
+                stats['allocated'], len(edge_flows), crs_desc, suffix))
 
     def _write_layer_to_gpkg(self, layer, table):
         """Write a memory layer as a table into the output GeoPackage.
