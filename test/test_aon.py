@@ -16,7 +16,7 @@ from qgis.core import (
 
 import aon
 
-from utilities import get_qgis_app
+from .utilities import get_qgis_app
 QGIS_APP = get_qgis_app()
 
 

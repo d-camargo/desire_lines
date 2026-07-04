@@ -1,7 +1,7 @@
 # coding=utf-8
 """Common functionality used by regression tests."""
 
-import sys
+import os
 import logging
 
 
@@ -23,7 +23,7 @@ def get_qgis_app():
     """
 
     try:
-        from qgis.PyQt import QtGui, QtCore
+        from qgis.PyQt import QtWidgets, QtCore
         from qgis.core import QgsApplication
         from qgis.gui import QgsMapCanvas
         from .qgis_interface import QgisInterface
@@ -35,8 +35,10 @@ def get_qgis_app():
     if QGIS_APP is None:
         gui_flag = True  # All test will run qgis in gui mode
         #noinspection PyPep8Naming
-        QGIS_APP = QgsApplication(sys.argv, gui_flag)
-        # Make sure QGIS_PREFIX_PATH is set in your env if needed!
+        QgsApplication.setPrefixPath(os.environ.get('QGIS_PREFIX_PATH', '/usr'), True)
+        # An empty argv avoids a PyQGIS binding bug where a non-empty argv
+        # list raises "TypeError: expected bytes, str found" on construction.
+        QGIS_APP = QgsApplication([], gui_flag)
         QGIS_APP.initQgis()
         s = QGIS_APP.showSettings()
         LOGGER.debug(s)
@@ -44,7 +46,7 @@ def get_qgis_app():
     global PARENT  # pylint: disable=W0603
     if PARENT is None:
         #noinspection PyPep8Naming
-        PARENT = QtGui.QWidget()
+        PARENT = QtWidgets.QWidget()
 
     global CANVAS  # pylint: disable=W0603
     if CANVAS is None:

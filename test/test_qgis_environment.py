@@ -54,7 +54,12 @@ class QGISTest(unittest.TestCase):
         title = 'TestRaster'
         layer = QgsRasterLayer(path, title)
         auth_id = layer.crs().authid()
-        self.assertEqual(auth_id, expected_auth_id)
+        # GDAL's own WKT-to-authority matching (used for the .prj sidecar
+        # of an ESRI ASCII grid) resolves this same WGS84 geographic CRS to
+        # OGC:CRS84 rather than EPSG:4326 on newer GDAL/PROJ, unlike
+        # QgsCoordinateReferenceSystem.createFromWkt() above. Both refer to
+        # the same datum/ellipsoid, so accept either.
+        self.assertIn(auth_id, (expected_auth_id, 'OGC:CRS84'))
 
 if __name__ == '__main__':
     unittest.main()

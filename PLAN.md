@@ -114,7 +114,7 @@ outro locale, deve continuar em Inglês (comportamento atual, inalterado).
       `[files]`, campo `locales: pt`. — arquivos: `Makefile`, `pb_tool.cfg`
       Verificação: `make transup` roda sem erro e cria/atualiza `i18n/pt.ts`.
 
-- [ ] 9. Rodar `make transup` para extrair todas as strings marcadas com
+- [x] 9. Rodar `make transup` para extrair todas as strings marcadas com
       `tr(...)` (Python) e todas as strings do `.ui` para `i18n/pt.ts`, e
       preencher manualmente `<translation>` em Português do Brasil para
       cada `<source>` extraída (inclui labels/tooltips do `.ui` e todas as
@@ -124,7 +124,7 @@ outro locale, deve continuar em Inglês (comportamento atual, inalterado).
       vazia restante (`grep -c "unfinished" i18n/pt.ts` = 0 ou só em itens
       intencionalmente não traduzidos, ex.: nome do plugin).
 
-- [ ] 10. Rodar `make transcompile` para compilar `i18n/pt.ts` →
+- [x] 10. Rodar `make transcompile` para compilar `i18n/pt.ts` →
       `i18n/DesireLines_pt.qm`, e confirmar que `pytest test/test_translations.py`
       (reescrito no passo 6) passa. — arquivos: `i18n/DesireLines_pt.qm`
       (gerado, não versionado)

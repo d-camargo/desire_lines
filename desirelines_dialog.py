@@ -48,7 +48,11 @@ from qgis.core import (
 from qgis.gui import QgsFileWidget
 from qgis.utils import iface
 
-from . import aon
+try:
+    from . import aon
+except ImportError:
+    # Loaded standalone (e.g. by the test suite), outside the plugin package.
+    import aon
 
 # Allow only safe characters in SQL identifiers (layer/field names) before
 # interpolating into the executesql query. Identifiers are user-chosen via
