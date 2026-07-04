@@ -130,7 +130,7 @@ outro locale, deve continuar em Inglês (comportamento atual, inalterado).
       (gerado, não versionado)
       Verificação: `pytest test/test_translations.py` verde.
 
-- [ ] 11. QA manual no QGIS: em Configurações → Opções → Geral, marcar
+- [x] 11. QA manual no QGIS: em Configurações → Opções → Geral, marcar
       "Sobrepor idioma do sistema" com Português (Brasil), reiniciar o
       QGIS/recarregar o plugin, abrir as duas abas (Desire Lines e AoN
       Delaunay) e conferir que labels, tooltips e todas as mensagens da
