@@ -90,6 +90,7 @@ compile: $(COMPILED_RESOURCE_FILES)
 
 %.py : %.qrc $(RESOURCES_SRC)
 	pyrcc5 -o $*.py  $<
+	sed -i 's/from PyQt5 import QtCore/from qgis.PyQt import QtCore/g' $*.py
 
 %.qm : %.ts
 	$(LRELEASE) $<

@@ -242,6 +242,20 @@ def allocate_aon(edges_layer, centroid_points, od_pairs, metric_crs):
     return edge_flows, stats
 
 
+def _double_field(name):
+    """Create a double QgsField, compatible with both PyQt5/Qt5 and PyQt6/Qt6."""
+    from qgis.core import QgsField
+    try:
+        from qgis.PyQt.QtCore import QMetaType
+        try:
+            return QgsField(name, QMetaType.Type.Double)
+        except (AttributeError, TypeError):
+            return QgsField(name, QMetaType.Double)
+    except (ImportError, AttributeError, TypeError):
+        from qgis.PyQt.QtCore import QVariant
+        return QgsField(name, QVariant.Double)
+
+
 def edge_flows_to_layer(edge_flows, crs, directional=False, name='aon_flows'):
     """Materialise ``edge_flows`` into a memory line layer.
 
@@ -252,15 +266,12 @@ def edge_flows_to_layer(edge_flows, crs, directional=False, name='aon_flows'):
     the conventional link-direction naming and avoids reading these as the
     matrix's origin/destination.
     """
-    from qgis.core import QgsField
-    from qgis.PyQt.QtCore import QVariant
-
     out = _memory_layer('LineString', crs, name)
     dp = out.dataProvider()
-    fields = [QgsField('flow', QVariant.Double)]
+    fields = [_double_field('flow')]
     if directional:
-        fields += [QgsField('flow_ab', QVariant.Double),
-                   QgsField('flow_ba', QVariant.Double)]
+        fields += [_double_field('flow_ab'),
+                   _double_field('flow_ba')]
     dp.addAttributes(fields)
     out.updateFields()
 
