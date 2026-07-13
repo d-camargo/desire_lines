@@ -1,1 +1,12 @@
 dist export-ignore
+# nao entram no zip publicado (continuam no GitHub):
+test export-ignore
+examples export-ignore
+help export-ignore
+scripts export-ignore
+PLAN.md export-ignore
+pb_tool.cfg export-ignore
+Makefile export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+docs export-ignore
