@@ -7,7 +7,7 @@ name=Desire Lines
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.3.1
+version=0.3.2
 author=Diego Camargo
 email=dg.camargo@proton.me
 
@@ -21,6 +21,8 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.3.2
+    - Fix Qt6 enum-scoping compatibility issues for QGIS Plugin Repository.
     0.2.0
     - New "AoN (Delaunay)" tab: All-or-Nothing allocation over a Delaunay network of zone centroids, following least-cost paths. Optional "Split by direction" output (flow_ab / flow_ba).
     - Automatic metric CRS selection for routing (UTM zone, or SIRGAS 2000 / Brazil Albers EPSG:10857 for wide areas).

@@ -78,7 +78,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
-        self.outputFile.setStorageMode(QgsFileWidget.SaveFile)
+        self.outputFile.setStorageMode(QgsFileWidget.StorageMode.SaveFile)
         self.outputFile.setFilter('GeoPackage (*.gpkg)')
         self.outputFile.setDialogTitle('Output GeoPackage')
 
@@ -348,7 +348,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         pbar.setMaximum(0)
         pbar.setTextVisible(False)
         widget.layout().addWidget(pbar)
-        mb.pushWidget(widget, Qgis.Info)
+        mb.pushWidget(widget, Qgis.MessageLevel.Info)
         QApplication.processEvents()
         return widget
 
@@ -371,10 +371,10 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         # gaps — a good default for flow maps.
         renderer = QgsGraduatedSymbolRenderer.createRenderer(
             layer, value_field, 5,
-            QgsGraduatedSymbolRenderer.Jenks, base, ramp)
+            QgsGraduatedSymbolRenderer.Mode.Jenks, base, ramp)
         # Encode flow as stroke width (single colour) so it reads like a flow
         # map while staying editable class-by-class in the panel.
-        renderer.setGraduatedMethod(QgsGraduatedSymbolRenderer.GraduatedSize)
+        renderer.setGraduatedMethod(QgsGraduatedSymbolRenderer.GraduatedMethod.GraduatedSize)
         renderer.setSymbolSizes(0.2, 3.0)
         layer.setRenderer(renderer)
         layer.triggerRepaint()
@@ -557,7 +557,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
         options.layerName = table
         if os.path.exists(out_path):
             options.actionOnExistingFile = \
-                QgsVectorFileWriter.CreateOrOverwriteLayer
+                QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
         QgsVectorFileWriter.writeAsVectorFormatV3(
             layer, out_path, QgsProject.instance().transformContext(), options)
         add_table = out_path + '|layername={}'.format(table)

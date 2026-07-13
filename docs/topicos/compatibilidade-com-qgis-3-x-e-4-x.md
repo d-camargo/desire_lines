@@ -1,6 +1,6 @@
 # Tópico: compatibilidade-com-qgis-3-x-e-4-x
 _Memória deste tópico. O orquestrador lê isto no início de toda conversa._
-Atualizado: 2026-07-13 · HEAD: 46f2d68
+Atualizado: 2026-07-13 · HEAD: 3aa7e1a
 
 ## Objetivo
 Plugin "Desire Lines" rodar a partir do **mesmo código-fonte** (sem branch
@@ -26,8 +26,7 @@ nem zip separado) tanto em QGIS 3.x/PyQt5/Qt5 quanto em QGIS 4.x/PyQt6/Qt6.
   caminho de arquivo (`os.path.join(os.path.dirname(__file__), 'icon.png')`).
 - Enums Qt sempre na forma escopada (`Qt.CursorShape.WaitCursor`, etc.) —
   funciona idêntico em Qt5 e Qt6, sem necessidade de fallback/try-except.
-- Enums nativos do QGIS (`QgsMapLayerProxyModel.PointLayer` etc.) **não**
-  foram escopados — sip do QGIS não exige isso, e não devem ser mexidos.
+- Enums nativos do QGIS (como `QgsMapLayerProxyModel.Filter.PointLayer`, `QgsFieldProxyModel.Filter.Int`, etc.) **foram escopados** (decisão revista em 2026-07-13): embora o runtime do QGIS 3.44/4.2 aceite a forma não-escopada, o checker de compatibilidade do QGIS Plugin Repository acusa erro de compatibilidade Qt6 caso contrário. Para passar no repositório, os enums foram escopados.
 - `qgisMinimumVersion`/`qgisMaximumVersion` mantidos como estavam.
 
 ## Pendências / próximo passo

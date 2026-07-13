@@ -182,7 +182,7 @@ def allocate_aon(edges_layer, centroid_points, od_pairs, metric_crs):
         ``allocated``, ``unreachable`` and ``skipped`` counts.
     """
     director = QgsVectorLayerDirector(
-        edges_layer, -1, '', '', '', QgsVectorLayerDirector.DirectionBoth)
+        edges_layer, -1, '', '', '', QgsVectorLayerDirector.Direction.DirectionBoth)
     director.addStrategy(QgsNetworkDistanceStrategy())  # cost = edge length
 
     builder = QgsGraphBuilder(metric_crs)
@@ -247,10 +247,7 @@ def _double_field(name):
     from qgis.core import QgsField
     try:
         from qgis.PyQt.QtCore import QMetaType
-        try:
-            return QgsField(name, QMetaType.Type.Double)
-        except (AttributeError, TypeError):
-            return QgsField(name, QMetaType.Double)
+        return QgsField(name, QMetaType.Type.Double)
     except (ImportError, AttributeError, TypeError):
         from qgis.PyQt.QtCore import QVariant
         return QgsField(name, QVariant.Double)
