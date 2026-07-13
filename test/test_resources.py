@@ -12,6 +12,7 @@ __author__ = 'dg.camargo@proton.me'
 __date__ = '2024-07-13'
 __copyright__ = 'Copyright 2024, Diego Camargo'
 
+import os
 import unittest
 
 from qgis.PyQt.QtGui import QIcon
@@ -31,7 +32,7 @@ class DesireLinesDialogTest(unittest.TestCase):
 
     def test_icon_png(self):
         """Test we can click OK."""
-        path = ':/plugins/DesireLines/icon.png'
+        path = os.path.join(os.path.dirname(__file__), '..', 'icon.png')
         icon = QIcon(path)
         self.assertFalse(icon.isNull())
 

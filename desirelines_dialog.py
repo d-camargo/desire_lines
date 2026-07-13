@@ -321,7 +321,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
 
         file_name = 'ogr:dbname=\'' + output_cent + '\' table="Desire_Lines" (geom)'
         progress_widget = self._push_progress(self.tr('Generating desire lines…'))
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             processing.run("qgis:executesql", {'INPUT_DATASOURCES': [
                 input_centroids],
@@ -513,7 +513,7 @@ class DesireLinesDialog(QtWidgets.QDialog, FORM_CLASS):
 
         # 5. Build the Delaunay network and run the allocation.
         progress_widget = self._push_progress(self.tr('Allocating (AoN over Delaunay)…'))
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             point_layer = aon.points_to_layer(centroid_points, metric_crs)
             edges_layer = aon.build_delaunay_edges(point_layer)

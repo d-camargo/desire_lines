@@ -27,8 +27,6 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
 
-# Initialize Qt resources from file resources.py
-from . import resources  # noqa: F401
 # Import the code for the dialog
 from .desirelines_dialog import DesireLinesDialog
 
@@ -164,7 +162,7 @@ class DesireLines:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ':/plugins/desirelines/icon.png'
+        icon_path = os.path.join(os.path.dirname(__file__), 'icon.png')
         self.add_action(
             icon_path,
             text=self.tr(u'Desire Lines'),
@@ -215,7 +213,7 @@ class DesireLines:
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
-        result = self.dlg.exec_()
+        result = self.dlg.exec()
         # See if OK was pressed
         if result:
             # Do something useful here - delete the line containing pass and
