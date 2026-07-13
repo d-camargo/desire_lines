@@ -40,7 +40,7 @@ SOURCES = \
 	__init__.py \
 	desirelines.py desirelines_dialog.py
 
-PLUGINNAME = desirelines
+PLUGINNAME = desire_lines
 
 PY_FILES = \
 	__init__.py \
