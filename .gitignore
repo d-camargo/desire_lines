@@ -5,6 +5,9 @@ __pycache__/
 
 # QGIS plugin build artifacts
 *.qm
+# ...MENOS o .qm do i18n: nao e lixo de build, e ENTREGAVEL —
+# o QGIS le ele em runtime e o zip do repositorio precisa dele.
+!i18n/*.qm
 *.zip
 
 # Local test data and output
