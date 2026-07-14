@@ -23,3 +23,15 @@ output.gpkg-wal
 .vscode/
 .idea/
 *.swp
+
+# --- Arquivos de trabalho dos agentes (NAO versionar: ficam locais/no brain repo privado) ---
+CLAUDE.md
+AGENTS.md
+ACTIONS.md
+INSTRUCTIONS.md
+QUICK_START_OSM.md
+PLAN.md
+docs/topicos/
+.planexec/
+.claude/
+.idea/
