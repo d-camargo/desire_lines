@@ -16,7 +16,7 @@ import unittest
 
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QDialog
 
-from desirelines_dialog import DesireLinesDialog
+from desire_lines.desirelines_dialog import DesireLinesDialog
 
 from .utilities import get_qgis_app
 QGIS_APP = get_qgis_app()

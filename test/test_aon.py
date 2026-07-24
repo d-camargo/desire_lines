@@ -14,7 +14,7 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
 )
 
-import aon
+from desire_lines import aon
 
 from .utilities import get_qgis_app
 QGIS_APP = get_qgis_app()

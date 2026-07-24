@@ -1,0 +1,7 @@
+# Configuração do qgis-plugin-ci — empacotamento e publicação do plugin.
+# Docs: https://opengisch.github.io/qgis-plugin-ci/
+# ATENÇÃO: plugin_path DEVE ser 'desire_lines' — é o nome já registrado em
+# plugins.qgis.org (o QGIS recusa upload se a pasta-raiz do zip divergir).
+plugin_path: desire_lines
+github_organization_slug: d-camargo
+project_slug: desire_lines
