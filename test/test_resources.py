@@ -31,8 +31,15 @@ class DesireLinesDialogTest(unittest.TestCase):
         pass
 
     def test_icon_png(self):
-        """Test we can click OK."""
-        path = os.path.join(os.path.dirname(__file__), '..', 'icon.png')
+        """The plugin icon file exists and loads.
+
+        Path is relative to the plugin package folder (desire_lines/), not the
+        repo root — Qt5's QIcon(path) is lazy and reports a missing file as
+        non-null, so a stale path here only fails under Qt6.
+        """
+        path = os.path.join(
+            os.path.dirname(__file__), '..', 'desire_lines', 'icon.png')
+        self.assertTrue(os.path.exists(path), path)
         icon = QIcon(path)
         self.assertFalse(icon.isNull())
 

@@ -35,7 +35,7 @@ class PtBrTranslationsTest(unittest.TestCase):
         parent_path = os.path.join(__file__, os.path.pardir, os.path.pardir)
         dir_path = os.path.abspath(parent_path)
         file_path = os.path.join(
-            dir_path, 'i18n', 'DesireLines_pt.qm')
+            dir_path, 'desire_lines', 'i18n', 'DesireLines_pt.qm')
         translator = QTranslator()
         translator.load(file_path)
         QCoreApplication.installTranslator(translator)

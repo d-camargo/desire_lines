@@ -545,6 +545,305 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tab_4">
+      <attribute name="title">
+       <string>Alocação em rodovias</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="tab4Layout">
+       <item>
+        <widget class="QLabel" name="taGisbrWarning">
+         <property name="text">
+          <string>The GisBR plugin is required to download the official highway network.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="taScopeNote">
+         <property name="text">
+          <string>Scope: rural/interurban highways (HCM ch. 12 and 15). Urban stretches are flagged escopo='urbano' — urban capacity follows a different procedure and is out of scope.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="taNetworkGroup">
+         <property name="title">
+          <string>Network</string>
+         </property>
+         <layout class="QGridLayout" name="taNetworkGrid">
+          <item row="0" column="0" colspan="2">
+           <widget class="QRadioButton" name="taNetFromLayer">
+            <property name="text">
+             <string>Use an existing layer</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="taLabelNetwork">
+            <property name="text">
+             <string>Highway layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QgsMapLayerComboBox" name="taNetworkCombo"/>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="taLabelIdField">
+            <property name="text">
+             <string>Link id field (optional)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QgsFieldComboBox" name="taIdField">
+            <property name="allowEmptyFieldName">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
+           <widget class="QRadioButton" name="taNetFromGisbr">
+            <property name="text">
+             <string>Download via GisBR (official SNV/DER network)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="taLabelUf">
+            <property name="text">
+             <string>State (UF)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="taUf">
+            <property name="maxLength">
+             <number>2</number>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" colspan="2">
+           <widget class="QCheckBox" name="taClipToCentroids">
+            <property name="text">
+             <string>Clip to the centroids extent (plus buffer)</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="taParamsGroup">
+         <property name="title">
+          <string>HCM parameters (default, or override globally / by field)</string>
+         </property>
+         <layout class="QGridLayout" name="taParamsGrid"/>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="taAssignGroup">
+         <property name="title">
+          <string>Assignment</string>
+         </property>
+         <layout class="QGridLayout" name="taAssignGrid">
+          <item row="0" column="0">
+           <widget class="QLabel" name="taLabelMatrix">
+            <property name="text">
+             <string>OD matrix</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="3">
+           <widget class="QgsMapLayerComboBox" name="taMatrixCombo"/>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="taLabelOrigin">
+            <property name="text">
+             <string>Origin</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QgsFieldComboBox" name="taOriginField"/>
+          </item>
+          <item row="1" column="2">
+           <widget class="QLabel" name="taLabelDest">
+            <property name="text">
+             <string>Destination</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QgsFieldComboBox" name="taDestField"/>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="taLabelValue">
+            <property name="text">
+             <string>Demand (veh/h)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QgsFieldComboBox" name="taValueField"/>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="taLabelCentroids">
+            <property name="text">
+             <string>Centroids</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" colspan="3">
+           <widget class="QgsMapLayerComboBox" name="taCentroidsCombo"/>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="taLabelZoneId">
+            <property name="text">
+             <string>Traffic id</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QgsFieldComboBox" name="taZoneIdField"/>
+          </item>
+          <item row="4" column="2">
+           <widget class="QLabel" name="taLabelMaxDist">
+            <property name="text">
+             <string>Max connector (m)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="3">
+           <widget class="QDoubleSpinBox" name="taMaxDist">
+            <property name="decimals">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <double>200000.000000000000000</double>
+            </property>
+            <property name="singleStep">
+             <double>500.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>5000.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="taLabelMethod">
+            <property name="text">
+             <string>Method</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1" colspan="3">
+           <widget class="QComboBox" name="taMethod">
+            <item>
+             <property name="text">
+              <string>All-or-Nothing (no capacity restraint)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Equilibrium MSA + BPR</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="taLabelMaxIter">
+            <property name="text">
+             <string>Iterations</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QSpinBox" name="taMaxIter">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>500</number>
+            </property>
+            <property name="value">
+             <number>10</number>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="2">
+           <widget class="QLabel" name="taLabelGapTol">
+            <property name="text">
+             <string>Gap tolerance</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="3">
+           <widget class="QDoubleSpinBox" name="taGapTol">
+            <property name="decimals">
+             <number>4</number>
+            </property>
+            <property name="minimum">
+             <double>0.000100000000000</double>
+            </property>
+            <property name="maximum">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="singleStep">
+             <double>0.005000000000000</double>
+            </property>
+            <property name="value">
+             <double>0.010000000000000</double>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="taButtonsLayout">
+         <item>
+          <spacer name="taButtonsSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="taRunCapacity">
+           <property name="text">
+            <string>Compute capacity</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="taRunAssign">
+           <property name="text">
+            <string>Assign</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>

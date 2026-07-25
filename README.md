@@ -21,4 +21,15 @@ There are two places where you can open the plugin: (1) in the toolbar and (2) u
 
 ![image](https://github.com/user-attachments/assets/69aaddac-a9c1-4cee-a3cb-c3fb0cbf7148)
 
+## Features
+
+1. **Origin/Destination Matrix**: Imports OD matrix (CSV) and traffic zone geometries to generate centroids.
+2. **Desire Lines**: Generates direct desire line vectors between centroids weighted by demand.
+3. **AoN (Delaunay)**: Performs All-or-Nothing traffic assignment on a synthetic Delaunay network.
+4. **Highway Assignment (Alocação em rodovias)**: Performs capacity calculation (HCM 6th Edition) and traffic assignment (AoN or MSA/BPR) on real highway networks.
+
+> **Requirements & Scope for Highway Assignment:**
+> - **GISBR Plugin Requirement**: The Highway Assignment tab requires the **GISBR** plugin (`plugin_dependencies=GisBR`) to fetch official national highway network data (SNV / INDE).
+> - **Highway Scope Notice**: Developed for rural and interurban highways. Urban crossings inside the network use an approximation notice and are flagged (`escopo = 'urbano'`).
+
 Enjoy!
