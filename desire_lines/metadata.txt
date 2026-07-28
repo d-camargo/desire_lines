@@ -7,11 +7,11 @@ name=Desire Lines
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.3.2
+version=0.4.0
 author=Diego Camargo
 email=dg.camargo@proton.me
 
-about=The plugin helps users illustrate movement patterns, such as travel routes, pedestrian flows, or migration paths, allowing for a clearer understanding of spatial dynamics. By visualizing these paths, the plugin aids in urban planning, transportation analysis, and spatial studies, providing insights into how people or objects move between locations..
+about=The plugin helps users illustrate movement patterns, such as travel routes, pedestrian flows, or migration paths, allowing for a clearer understanding of spatial dynamics. By visualizing these paths, the plugin aids in urban planning, transportation analysis, and spatial studies, providing insights into how people or objects move between locations. The "Alocacao em rodovias" tab assigns traffic over the real highway network with HCM capacity; it targets rural/interurban highways (not urban streets) and requires the GisBR plugin to download the official network.
 
 tracker=https://github.com/d-camargo/desire_lines/issues
 repository=https://github.com/d-camargo/desire_lines
@@ -21,6 +21,13 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.4.0
+    - New "Alocacao em rodovias" tab: traffic assignment over the real highway network (official DNIT/SNV and DER mesh via the GisBR plugin) with per-direction capacity computed by HCM 6th ed. procedures (ch. 15 two-lane, ch. 12 multilane/freeway).
+    - Two assignment methods, same inputs and same outputs: All-or-Nothing (single pass, no capacity restraint) and Equilibrium MSA + BPR (iterative, with relative gap).
+    - Separate "Compute capacity" action: returns the mesh with capacidade and the src_* provenance of every parameter, before any assignment.
+    - Output layer carries volume, capacidade, v/c, approximate LOS (by v/c band), time, delay, method, scope and per-parameter provenance, styled by v/c.
+    - Missing HCM parameters are never assumed silently: each has a documented default, is overridable globally or by layer field, and its effective source is recorded.
+    - Urban crossings inside the highway mesh are flagged escopo='urbano' and counted with a warning: urban capacity follows a different procedure and is out of scope.
     0.3.2
     - Fix Qt6 enum-scoping compatibility issues for QGIS Plugin Repository.
     0.2.0
@@ -47,7 +54,7 @@ deprecated=False
 # Since QGIS 3.8, a comma separated list of plugins to be installed
 # (or upgraded) can be specified.
 # Check the documentation for more information.
-# plugin_dependencies=
+plugin_dependencies=GisBR
 
 # Category of the plugin: Vector, Database or Web
 # category=

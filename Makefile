@@ -1,236 +1,74 @@
-#/***************************************************************************
-# DesireLines
-#
-# OD desire lines
-#							 -------------------
-#		begin				: 2024-07-13
-#		git sha				: $Format:%H$
-#		copyright			: (C) 2024 by Diego Camargo
-#		email				: dg.camargo@proton.me
-# ***************************************************************************/
-#
-#/***************************************************************************
-# *																		 *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU General Public License as published by  *
-# *   the Free Software Foundation; either version 2 of the License, or	 *
-# *   (at your option) any later version.								   *
-# *																		 *
-# ***************************************************************************/
-
-#################################################
-# Edit the following to match your sources lists
-#################################################
-
-
-#Add iso code for any locales you want to support here (space separated)
-# default is no locales
-# LOCALES = af
-LOCALES = pt
-
-# If locales are enabled, set the name of the lrelease binary on your system. If
-# you have trouble compiling the translations, you may have to specify the full path to
-# lrelease
-LRELEASE = lrelease
-#LRELEASE = lrelease-qt4
-
-
-# translation
-SOURCES = \
-	__init__.py \
-	desirelines.py desirelines_dialog.py
+# Makefile — desire_lines
+# Deploy por symlink para o perfil default do QGIS; empacotamento via qgis-plugin-ci.
+# (Substitui o Makefile legado do Plugin Builder — deploy Windows/nosetests/sphinx.)
 
 PLUGINNAME = desire_lines
+LOCALES = pt
+LRELEASE = lrelease
+VERSION = $(shell grep '^version=' $(PLUGINNAME)/metadata.txt | cut -d= -f2)
+QGIS_PLUGINS = $(HOME)/.local/share/QGIS/QGIS3/profiles/default/python/plugins
+FLATPAK_PLUGINS = $(HOME)/.var/app/org.qgis.qgis/data/QGIS/QGIS3/profiles/default/python/plugins
+TARGET = $(QGIS_PLUGINS)/$(PLUGINNAME)
+FLATPAK_TARGET = $(FLATPAK_PLUGINS)/$(PLUGINNAME)
+SRC = $(CURDIR)/$(PLUGINNAME)
 
-PY_FILES = \
-	__init__.py \
-	desirelines.py desirelines_dialog.py
+.PHONY: deploy deploy-flatpak undeploy undeploy-flatpak clean test package transup transcompile help
 
-UI_FILES = desirelines_dialog_base.ui
+help:
+	@echo "make deploy          - symlink do plugin no perfil do QGIS do sistema"
+	@echo "make deploy-flatpak  - symlink no perfil do QGIS Flatpak"
+	@echo "make undeploy        - remove o symlink (sistema)"
+	@echo "make undeploy-flatpak- remove o symlink (flatpak)"
+	@echo "make clean           - remove __pycache__"
+	@echo "make test            - smoke test de sintaxe (sem QGIS)"
+	@echo "make package         - gera o pacote zip via qgis-plugin-ci em dist/desire_lines-<version>.zip"
+	@echo "make transup         - extrai strings para $(PLUGINNAME)/i18n/<locale>.ts"
+	@echo "make transcompile    - compila i18n/*.ts para .qm (DesireLines_<locale>.qm)"
 
-EXTRAS = metadata.txt icon.png
+deploy:
+	@mkdir -p $(QGIS_PLUGINS)
+	@if [ -e "$(TARGET)" ] && [ ! -L "$(TARGET)" ]; then \
+		echo "ERRO: $(TARGET) existe e nao e symlink. Remova manualmente."; exit 1; \
+	fi
+	@ln -sfn "$(SRC)" "$(TARGET)"
+	@echo "symlink: $(TARGET) -> $(SRC)"
+	@echo "Recarregue no QGIS (Plugin Reloader) ou reinicie."
 
-EXTRA_DIRS =
+deploy-flatpak:
+	@if [ ! -d "$(dir $(FLATPAK_PLUGINS))" ]; then \
+		echo "ERRO: perfil Flatpak nao existe ainda."; exit 1; \
+	fi
+	@mkdir -p "$(FLATPAK_PLUGINS)"
+	@if [ -e "$(FLATPAK_TARGET)" ] && [ ! -L "$(FLATPAK_TARGET)" ]; then \
+		echo "ERRO: $(FLATPAK_TARGET) existe e nao e symlink."; exit 1; \
+	fi
+	@ln -sfn "$(SRC)" "$(FLATPAK_TARGET)"
+	@echo "symlink (flatpak): $(FLATPAK_TARGET) -> $(SRC)"
 
-PEP8EXCLUDE=pydev,conf.py,third_party,ui
+undeploy:
+	@if [ -L "$(TARGET)" ]; then rm "$(TARGET)" && echo "removido $(TARGET)"; \
+	else echo "nada a remover"; fi
 
-# QGISDIR points to the location where your plugin should be installed.
-# This varies by platform, relative to your HOME directory:
-#	* Linux:
-#	  .local/share/QGIS/QGIS3/profiles/default/python/plugins/
-#	* Mac OS X:
-#	  Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins
-#	* Windows:
-#	  AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins'
-
-QGISDIR=C:\Users\37179795828\AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
-
-#################################################
-# Normally you would not need to edit below here
-#################################################
-
-HELP = help/build/html
-
-PLUGIN_UPLOAD = $(c)/plugin_upload.py
-
-.PHONY: default
-default:
-	@echo While you can use make to build and deploy your plugin, pb_tool
-	@echo is a much better solution.
-	@echo A Python script, pb_tool provides platform independent management of
-	@echo your plugins and runs anywhere.
-	@echo You can install pb_tool using: pip install pb_tool
-	@echo See https://g-sherman.github.io/plugin_build_tool/ for info. 
-
-compile:
-
-%.qm : %.ts
-	$(LRELEASE) $<
-
-test: compile transcompile
-	@echo
-	@echo "----------------------"
-	@echo "Regression Test Suite"
-	@echo "----------------------"
-
-	@# Preceding dash means that make will continue in case of errors
-	@-export PYTHONPATH=`pwd`:$(PYTHONPATH); \
-		export QGIS_DEBUG=0; \
-		export QGIS_LOG_FILE=/dev/null; \
-		nosetests -v --with-id --with-coverage --cover-package=. \
-		3>&1 1>&2 2>&3 3>&- || true
-	@echo "----------------------"
-	@echo "If you get a 'no module named qgis.core error, try sourcing"
-	@echo "the helper script we have provided first then run make test."
-	@echo "e.g. source run-env-linux.sh <path to qgis install>; make test"
-	@echo "----------------------"
-
-deploy: compile doc transcompile
-	@echo
-	@echo "------------------------------------------"
-	@echo "Deploying plugin to your .qgis2 directory."
-	@echo "------------------------------------------"
-	# The deploy  target only works on unix like operating system where
-	# the Python plugin directory is located at:
-	# $HOME/$(QGISDIR)/python/plugins
-	mkdir -p $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(PY_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(UI_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vfr i18n $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vfr $(HELP) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/help
-	# Copy extra directories if any
-	(foreach EXTRA_DIR,(EXTRA_DIRS), cp -R (EXTRA_DIR) (HOME)/(QGISDIR)/python/plugins/(PLUGINNAME)/;)
-
-
-# The dclean target removes compiled python files from plugin directory
-# also deletes any .git entry
-dclean:
-	@echo
-	@echo "-----------------------------------"
-	@echo "Removing any compiled python files."
-	@echo "-----------------------------------"
-	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname "*.pyc" -delete
-	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname ".git" -prune -exec rm -Rf {} \;
-
-
-derase:
-	@echo
-	@echo "-------------------------"
-	@echo "Removing deployed plugin."
-	@echo "-------------------------"
-	rm -Rf $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-
-zip: deploy dclean
-	@echo
-	@echo "---------------------------"
-	@echo "Creating plugin zip bundle."
-	@echo "---------------------------"
-	# The zip target deploys the plugin and creates a zip file with the deployed
-	# content. You can then upload the zip file on http://plugins.qgis.org
-	rm -f $(PLUGINNAME).zip
-	cd $(HOME)/$(QGISDIR)/python/plugins; zip -9r $(CURDIR)/$(PLUGINNAME).zip $(PLUGINNAME)
-
-package: compile
-	# Create a zip package of the plugin named $(PLUGINNAME).zip.
-	# This requires use of git (your plugin development directory must be a
-	# git repository).
-	# To use, pass a valid commit or tag as follows:
-	#   make package VERSION=Version_0.3.2
-	@echo
-	@echo "------------------------------------"
-	@echo "Exporting plugin to zip package.	"
-	@echo "------------------------------------"
-	rm -f $(PLUGINNAME).zip
-	git archive --prefix=$(PLUGINNAME)/ -o $(PLUGINNAME).zip $(VERSION)
-	echo "Created package: $(PLUGINNAME).zip"
-
-upload: zip
-	@echo
-	@echo "-------------------------------------"
-	@echo "Uploading plugin to QGIS Plugin repo."
-	@echo "-------------------------------------"
-	$(PLUGIN_UPLOAD) $(PLUGINNAME).zip
-
-transup:
-	@echo
-	@echo "------------------------------------------------"
-	@echo "Updating translation files with any new strings."
-	@echo "------------------------------------------------"
-	@chmod +x scripts/update-strings.sh
-	@scripts/update-strings.sh $(LOCALES)
-
-transcompile:
-	@echo
-	@echo "----------------------------------------"
-	@echo "Compiled translation files to .qm files."
-	@echo "----------------------------------------"
-	@chmod +x scripts/compile-strings.sh
-	@scripts/compile-strings.sh $(LRELEASE) $(LOCALES)
-
-transclean:
-	@echo
-	@echo "------------------------------------"
-	@echo "Removing compiled translation files."
-	@echo "------------------------------------"
-	rm -f i18n/*.qm
+undeploy-flatpak:
+	@if [ -L "$(FLATPAK_TARGET)" ]; then rm "$(FLATPAK_TARGET)" && echo "removido $(FLATPAK_TARGET)"; \
+	else echo "nada a remover"; fi
 
 clean:
-	@echo
-	@echo "------------------------------------"
-	@echo "Removing uic and rcc generated files"
-	@echo "------------------------------------"
-	rm -f $(COMPILED_UI_FILES)
+	@find . -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "*.pyc" -delete 2>/dev/null || true
+	@echo "limpo"
 
-doc:
-	@echo
-	@echo "------------------------------------"
-	@echo "Building documentation using sphinx."
-	@echo "------------------------------------"
-	cd help; make html
+test:
+	@python3 -c "import ast,glob,sys; [ast.parse(open(f).read(), f) for f in glob.glob('**/*.py', recursive=True)]; print('sintaxe OK')"
 
-pylint:
-	@echo
-	@echo "-----------------"
-	@echo "Pylint violations"
-	@echo "-----------------"
-	@pylint --reports=n --rcfile=pylintrc . || true
-	@echo
-	@echo "----------------------"
-	@echo "If you get a 'no module named qgis.core' error, try sourcing"
-	@echo "the helper script we have provided first then run make pylint."
-	@echo "e.g. source run-env-linux.sh <path to qgis install>; make pylint"
-	@echo "----------------------"
+package:
+	@mkdir -p dist
+	@qgis-plugin-ci package $(VERSION) --disable-submodule-update
+	@mv $(PLUGINNAME).$(VERSION).zip dist/$(PLUGINNAME)-$(VERSION).zip 2>/dev/null || true
+	@echo "Pacote gerado em dist/$(PLUGINNAME)-$(VERSION).zip"
 
+transup:
+	@cd $(PLUGINNAME) && $(CURDIR)/scripts/update-strings.sh $(LOCALES)
 
-# Run pep8 style checking
-#http://pypi.python.org/pypi/pep8
-pep8:
-	@echo
-	@echo "-----------"
-	@echo "PEP8 issues"
-	@echo "-----------"
-	@pep8 --repeat --ignore=E203,E121,E122,E123,E124,E125,E126,E127,E128 --exclude $(PEP8EXCLUDE) . || true
-	@echo "-----------"
-	@echo "Ignored in PEP8 check:"
-	@echo $(PEP8EXCLUDE)
+transcompile:
+	@cd $(PLUGINNAME) && $(CURDIR)/scripts/compile-strings.sh $(LRELEASE) $(LOCALES)
