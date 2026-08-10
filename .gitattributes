@@ -5,6 +5,9 @@ examples export-ignore
 help export-ignore
 scripts export-ignore
 PLAN.md export-ignore
+CLAUDE.md export-ignore
+AGENTS.md export-ignore
+GEMINI.md export-ignore
 pb_tool.cfg export-ignore
 Makefile export-ignore
 .gitattributes export-ignore
