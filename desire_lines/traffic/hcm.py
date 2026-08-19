@@ -31,7 +31,7 @@ BASE_MULTILANE_FREEWAY_CAPACITY_BY_FFS = (
     (88.5, 2250.0),
 )
 
-# Faixas de v/c para o LOS aproximado (ver D3 em DOCUMENTACAO.md): o LOS real
+# Faixas de v/c para o LOS aproximado (ver D3 em docs/referencia/metodos.md): o LOS real
 # do HCM sai de densidade/follower density, que exigem mais entrada do que há
 # por arco; aqui o v/c serve apenas para ranquear gargalos.
 LOS_VC_THRESHOLDS = (
@@ -189,7 +189,7 @@ def multilane_freeway_capacity(lanes=2, pct_hv=20.0, terrain='ondulado', phf=0.9
 def level_of_service(vc):
     """Obtém o nível de serviço (LOS) aproximado a partir da razão v/c.
 
-    Aproximação por faixas de v/c (ver D3 em DOCUMENTACAO.md), não por
+    Aproximação por faixas de v/c (ver D3 em docs/referencia/metodos.md), não por
     densidade: A ≤ 0,35; B ≤ 0,55; C ≤ 0,75; D ≤ 0,90; E ≤ 1,00; F > 1,00.
 
     Args:

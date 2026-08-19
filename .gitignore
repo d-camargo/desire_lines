@@ -36,3 +36,10 @@ docs/topicos/
 .planexec/
 .claude/
 .idea/
+
+# Documentation build and environment
+site/
+.venv-docs/
+docs/changelog.md
+
+

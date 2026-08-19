@@ -12,7 +12,7 @@ TARGET = $(QGIS_PLUGINS)/$(PLUGINNAME)
 FLATPAK_TARGET = $(FLATPAK_PLUGINS)/$(PLUGINNAME)
 SRC = $(CURDIR)/$(PLUGINNAME)
 
-.PHONY: deploy deploy-flatpak undeploy undeploy-flatpak clean test package transup transcompile help
+.PHONY: deploy deploy-flatpak undeploy undeploy-flatpak clean test package transup transcompile help docs-deps docs-build docs-serve
 
 help:
 	@echo "make deploy          - symlink do plugin no perfil do QGIS do sistema"
@@ -24,6 +24,9 @@ help:
 	@echo "make package         - gera o pacote zip via qgis-plugin-ci em dist/desire_lines-<version>.zip"
 	@echo "make transup         - extrai strings para $(PLUGINNAME)/i18n/<locale>.ts"
 	@echo "make transcompile    - compila i18n/*.ts para .qm (DesireLines_<locale>.qm)"
+	@echo "make docs-deps       - cria .venv-docs e instala dependencias de docs"
+	@echo "make docs-build      - gera a pagina de changelog e compila o site (mkdocs build --strict)"
+	@echo "make docs-serve      - gera a pagina de changelog e inicia o servidor local (mkdocs serve)"
 
 deploy:
 	@mkdir -p $(QGIS_PLUGINS)
@@ -72,3 +75,15 @@ transup:
 
 transcompile:
 	@cd $(PLUGINNAME) && $(CURDIR)/scripts/compile-strings.sh $(LRELEASE) $(LOCALES)
+
+docs-deps:
+	@python3 -m venv .venv-docs
+	@.venv-docs/bin/pip install -r docs/requirements.txt
+
+docs-build:
+	@.venv-docs/bin/python scripts/build_changelog_page.py
+	@.venv-docs/bin/mkdocs build --strict
+
+docs-serve:
+	@.venv-docs/bin/python scripts/build_changelog_page.py
+	@.venv-docs/bin/mkdocs serve

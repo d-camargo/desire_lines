@@ -1,0 +1,43 @@
+site_name: Desire Lines
+site_url: https://desirelines.dcamargo.com.br
+repo_url: https://github.com/d-camargo/desire_lines
+docs_dir: docs
+exclude_docs: topicos/
+
+theme:
+  name: material
+  language: pt-BR
+
+plugins:
+  - search:
+      lang: pt
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+nav:
+  - Início: index.md
+  - Instalação: instalacao.md
+  - Guias:
+      - Matriz OD: guias/matriz-od.md
+      - Linhas de desejo: guias/linhas-de-desejo.md
+      - AoN Delaunay: guias/aon-delaunay.md
+      - Alocação em rodovias: guias/alocacao-rodovias.md
+      - Exemplos: guias/exemplos.md
+  - Referência:
+      - Formatos de entrada: referencia/formatos-de-entrada.md
+      - Campos de saída: referencia/campos-de-saida.md
+      - Parâmetros HCM: referencia/parametros-hcm.md
+      - Métodos: referencia/metodos.md
+  - Solução de problemas: solucao-de-problemas.md
+  - Arquitetura: arquitetura.md
+  - Histórico de versões: changelog.md
+  - English: en/overview.md
+
