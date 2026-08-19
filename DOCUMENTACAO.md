@@ -22,10 +22,11 @@ Para facilitar a localização de conteúdos citados anteriormente neste arquivo
 | **§4. Aba 3 — AoN (Delaunay)** | Alocação All-or-Nothing sintética sobre triangulação de Delaunay e CRS métrico. | [Guia: AoN (Delaunay)](https://desirelines.dcamargo.com.br/guias/aon-delaunay/) (`docs/guias/aon-delaunay.md`) |
 | **§5. Aba 4 — Alocação em rodovias** | Passo a passo da alocação rodoviária real com HCM (capacidade, AoN e MSA). | [Guia: Alocação em Rodovias](https://desirelines.dcamargo.com.br/guias/alocacao-rodovias/) (`docs/guias/alocacao-rodovias.md`) e [Parâmetros HCM](https://desirelines.dcamargo.com.br/referencia/parametros-hcm/) (`docs/referencia/parametros-hcm.md`) |
 | **§6. Arquitetura do código** | Estrutura dos módulos (`desirelines_dialog.py`, `aon.py`, `traffic/*`) e fronteira GUI × lógica pura. | [Arquitetura](https://desirelines.dcamargo.com.br/arquitetura/) (`docs/arquitetura.md`) |
-| **§7. Testes** | Suíte de testes unitários e como executá-la. | [Arquitetura — Testes](https://desirelines.dcamargo.com.br/arquitetura/#execucao-de-testes) (`docs/arquitetura.md`) |
+| **§7. Testes** | Suíte de testes unitários e como executá-la. | [Arquitetura — Testes](https://desirelines.dcamargo.com.br/arquitetura/#3-como-rodar-a-suite-de-testes) (`docs/arquitetura.md`) |
 | **§8. Notas e limitações** | Requisitos de ambiente, encodings e limitações de escopo. | [Solução de Problemas](https://desirelines.dcamargo.com.br/solucao-de-problemas/) (`docs/solucao-de-problemas.md`) e [Métodos](https://desirelines.dcamargo.com.br/referencia/metodos/) (`docs/referencia/metodos.md`) |
-| **§9. Decisões de Arquitetura (D1–D11)** | Registro das decisões de design do módulo de alocação de tráfego rodoviário. | [Arquitetura — Decisões D1–D11](https://desirelines.dcamargo.com.br/arquitetura/#decisoes-de-arquitetura-d1d11) (`docs/arquitetura.md`) e [Métodos](https://desirelines.dcamargo.com.br/referencia/metodos/) (`docs/referencia/metodos.md`) |
+| **§9. Decisões de Arquitetura (D1–D11)** | Registro das decisões de design do módulo de alocação de tráfego rodoviário. | [Arquitetura — Decisões D1–D11](https://desirelines.dcamargo.com.br/arquitetura/#5-registro-condensado-das-decisoes-de-arquitetura-d1d11) (`docs/arquitetura.md`) e [Métodos](https://desirelines.dcamargo.com.br/referencia/metodos/) (`docs/referencia/metodos.md`) |
 
 ---
 
-> Para outras informações sobre desenvolvimento, veja a fonte única de regras em [`GEMINI.md`](GEMINI.md).
+> Para informações sobre a estrutura do código, a suíte de testes e o empacotamento, veja
+> [Arquitetura](https://desirelines.dcamargo.com.br/arquitetura/) (`docs/arquitetura.md`).

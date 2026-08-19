@@ -12,7 +12,11 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from scripts.build_changelog_page import parse_metadata_changelog, build_changelog_markdown
+from scripts.build_changelog_page import (
+    parse_metadata_changelog,
+    build_changelog_markdown,
+    main as build_changelog_main,
+)
 
 
 def extract_nav_targets(nav_item):
@@ -67,9 +71,15 @@ class TestChangelogGenerator(unittest.TestCase):
         """Executa a geração em um diretório temporário para verificar a gravação."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             dest_file = Path(tmp_dir) / "changelog.md"
-            entries = parse_metadata_changelog(self.metadata_path)
-            md_content = build_changelog_markdown(entries)
-            dest_file.write_text(md_content, encoding="utf-8")
+            argv_original = sys.argv
+            sys.argv = [
+                "build_changelog_page.py",
+                "--destino", str(dest_file),
+            ]
+            try:
+                build_changelog_main()
+            finally:
+                sys.argv = argv_original
 
             self.assertTrue(dest_file.exists())
             written_content = dest_file.read_text(encoding="utf-8")

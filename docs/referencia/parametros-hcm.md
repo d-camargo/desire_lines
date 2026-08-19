@@ -40,15 +40,15 @@ A tabela abaixo lista os 15 parâmetros gerenciados pelo plugin (definidos em [`
 | `urbano` | Trecho urbano | - | Booleano (`bool`) | `False` | `urbano`, `trecho_urbano`, `travessia_urbana`, `tp_trecho`, `is_urbano` | Sinaliza se o segmento é uma travessia urbana (`True`) ou rodovia rural/interurbana (`False`). |
 | `largura_faixa` | Largura de faixa | m | Decimal (`float`) | `3.5` | `largura_faixa`, `larg_faixa`, `lane_width` | Largura média das faixas de rolamento. Padrão norma DNIT: 3,50 m. |
 | `largura_acostamento` | Largura de acostamento | m | Decimal (`float`) | `2.5` | `largura_acostamento`, `acostamento`, `shoulder_width` | Largura útil do acostamento lateral. Padrão norma DNIT: 2,50 m. |
-| `terreno` | Tipo de terreno | - | Texto (`str`) | `'ondulado'` | `terreno`, `tp_terreno`, `ds_terreno`, `terrain` | Topografia do trecho: `plano` (flat), `ondulado` (rolling) ou `montanhoso` (mountainous). Impacta a equivalência de veículos pesados ($E_T$). |
+| `terreno` | Tipo de terreno | - | Texto (`str`) | `'ondulado'` | `terreno`, `tp_terreno`, `ds_terreno`, `terrain` | Topografia do trecho: `plano` (flat), `ondulado` (rolling) ou `montanhoso` (mountainous). Impacta a equivalência de veículos pesados (`E_T`). |
 | `pct_veic_pesados` | Percentual de veículos pesados | % | Decimal (`float`) | `20.0` | `pct_veic_pesados`, `pct_pesados`, `veic_pesados`, `pct_hv`, `heavy_vehicles` | Porcentagem da composição do tráfego formada por caminhões e ônibus em relação ao volume total. |
 | `vel_livre` | Velocidade de fluxo livre (FFS) | km/h | Decimal (`float`) | `80.0` | `vel_livre`, `ffs`, `v_livre`, `vl_maxima`, `speed_limit` | Velocidade média observada sob baixo volume de tráfego (*Free-Flow Speed*). |
 | `phf` | Fator de Hora de Pico (PHF) | - | Decimal (`float`) | `0.92` | `phf`, `fator_pico`, `peak_hour_factor` | Relação entre o volume total na hora pico e a taxa máxima no subintervalo de 15 min (*Peak Hour Factor*). |
 | `pct_no_passing` | Zonas de ultrapassagem proibida | % | Decimal (`float`) | `50.0` | `pct_no_passing`, `ultrapassagem_proibida`, `pct_proib_ultrapassagem` | Porcentagem da extensão do trecho de pista simples com marcação contínua de proibição de ultrapassagem. |
 | `access_density` | Densidade de acessos | acessos/km | Decimal (`float`) | `10.0` | `access_density`, `densidade_acessos`, `n_acessos_km` | Número de intersecções, acessos comerciais e entradas por quilômetro (usado no cálculo de FFS para multipistas). |
 | `directional_split` | Divisão direcional | % | Decimal (`float`) | `50.0` | `directional_split`, `divisao_direcional`, `split_dir` | Proporção de fluxo no sentido principal (ex.: 50 para 50/50, 60 para 60/40). |
-| `bpr_alpha` | Alfa da função BPR | - | Decimal (`float`) | `0.15` | `bpr_alpha`, `alpha_bpr` | Coeficiente $\alpha$ da equação de tempo de viagem $t = t_0 [1 + \alpha (v/c)^\beta]$. |
-| `bpr_beta` | Beta da função BPR | - | Decimal (`float`) | `4.0` | `bpr_beta`, `beta_bpr` | Expoente $\beta$ da equação de congestionamento BPR. |
+| `bpr_alpha` | Alfa da função BPR | - | Decimal (`float`) | `0.15` | `bpr_alpha`, `alpha_bpr` | Coeficiente `alfa` da equação de tempo de viagem `t = t0 * [1 + alfa * (v/c) ^ beta]`. |
+| `bpr_beta` | Beta da função BPR | - | Decimal (`float`) | `4.0` | `bpr_beta`, `beta_bpr` | Expoente `beta` da equação de congestionamento BPR. |
 
 ---
 

@@ -34,8 +34,8 @@ A camada de **Alocação Sintética AoN sobre rede Delaunay** contém os segment
 | Campo | Tipo | Unidade | Descrição |
 |---|---|---|---|
 | `flow` | Decimal (`Double`) | Demanda (veíc/h ou unidades de fluxo) | Volume total de tráfego alocado no segmento da rede Delaunay. Corresponde à soma dos fluxos em ambas as direções do segmento (`flow = flow_ab + flow_ba`). |
-| `flow_ab` | Decimal (`Double`) | Demanda | Volume alocado no sentido de orientação A $\rightarrow$ B (do primeiro ao segundo vértice da feição). Gerado quando a opção **Split by direction** está ativada. |
-| `flow_ba` | Decimal (`Double`) | Demanda | Volume alocado no sentido de orientação B $\rightarrow$ A (do segundo ao primeiro vértice da feição). Gerado quando a opção **Split by direction** está ativada. |
+| `flow_ab` | Decimal (`Double`) | Demanda | Volume alocado no sentido de orientação A -> B (do primeiro ao segundo vértice da feição). Gerado quando a opção **Split by direction** está ativada. |
+| `flow_ba` | Decimal (`Double`) | Demanda | Volume alocado no sentido de orientação B -> A (do segundo ao primeiro vértice da feição). Gerado quando a opção **Split by direction** está ativada. |
 
 ---
 
@@ -78,10 +78,10 @@ Gerada após executar a alocação de demanda da matriz OD sobre a malha rodovi�
 | `vel_livre` | Decimal (`Double`) | km/h | Velocidade de fluxo livre (*Free-Flow Speed* - FFS) considerada no cálculo. |
 | `capacidade` | Decimal (`Double`) | veíc/h | Capacidade teórica máxima por sentido calculada segundo as normas do HCM 6ª Edição. |
 | `volume` | Decimal (`Double`) | veíc/h | Volume total de tráfego alocado sobre o arco após a resolução do modelo de alocação. |
-| `vc` | Decimal (`Double`) | adimensional | Razão Volume/Capacidade do arco ($v/c = \text{volume} / \text{capacidade}$). |
-| `los` | Texto (`String`) | - | Nível de Serviço (*Level of Service*) operacional do trecho, de `A` a `F`, derivado do indicador $v/c$. |
-| `tempo_h` | Decimal (`Double`) | h | Tempo total de viagem no trecho sob o fluxo alocado, determinado pela função de desempenho BPR ($t = t_0 [1 + \alpha (v/c)^\beta]$). |
-| `atraso_h` | Decimal (`Double`) | h | Atraso por trecho provocado pelo congestionamento em relação ao tempo em fluxo livre ($\text{tempo\_h} - t_0$). |
+| `vc` | Decimal (`Double`) | adimensional | Razão Volume/Capacidade do arco (`v/c = volume / capacidade`). |
+| `los` | Texto (`String`) | - | Nível de Serviço (*Level of Service*) operacional do trecho, de `A` a `F`, derivado do indicador `v/c`. |
+| `tempo_h` | Decimal (`Double`) | h | Tempo total de viagem no trecho sob o fluxo alocado, determinado pela função de desempenho BPR (`t = t0 * [1 + alfa * (v/c) ^ beta]`). |
+| `atraso_h` | Decimal (`Double`) | h | Atraso por trecho provocado pelo congestionamento em relação ao tempo em fluxo livre (`tempo_h - t0`). |
 | `metodo` | Texto (`String`) | - | Algoritmo de alocação empregado: `aon` (*All-or-Nothing*) ou `msa` (*Successive Averages Equilibrium*). |
 | `escopo` | Texto (`String`) | - | Classificação do escopo territorial: `rodoviario` (rodovia rural/interurbana com capacidade HCM) ou `urbano` (travessia urbana mantida na rede sem recálculo de capacidade). |
 
@@ -112,8 +112,8 @@ Os campos `src_*` podem assumir um dos três valores possíveis:
 | `src_pct_no_passing` | `pct_no_passing` | Proveniência do percentual de trecho com proibição de ultrapassagem. |
 | `src_access_density` | `access_density` | Proveniência da densidade de acessos por quilômetro (acessos/km). |
 | `src_directional_split` | `directional_split` | Proveniência da distribuição direcional do tráfego (ex.: 50/50, 60/40). |
-| `src_bpr_alpha` | `bpr_alpha` | Proveniência do parâmetro $\alpha$ da equação de impedância BPR. |
-| `src_bpr_beta` | `bpr_beta` | Proveniência do parâmetro $\beta$ da equação de impedância BPR. |
+| `src_bpr_alpha` | `bpr_alpha` | Proveniência do parâmetro `alfa` da equação de impedância BPR. |
+| `src_bpr_beta` | `bpr_beta` | Proveniência do parâmetro `beta` da equação de impedância BPR. |
 
 ---
 
@@ -123,14 +123,14 @@ As camadas de saída de alocação em rodovias (`alocacao_aon` e `alocacao_msa`)
 
 O estilo utiliza uma escala de cores intuitiva de 6 classes (de verde escuro a roxo) acompanhada pelo aumento na espessura das linhas:
 
-| Nível de Serviço | Intervalo de $v/c$ | Cor Hexadecimal | Espessura (mm) | Condição Operacional |
+| Nível de Serviço | Intervalo de `v/c` | Cor Hexadecimal | Espessura (mm) | Condição Operacional |
 |:---:|:---:|:---:|:---:|---|
-| **LOS A** | $v/c \le 0.35$ | `#1a9641` | 0.6 mm | **Fluxo Livre:** Condição excelente, sem restrição de manobra. |
-| **LOS B** | $0.35 < v/c \le 0.55$ | `#a6d96a` | 0.8 mm | **Fluxo Estável:** Pequeno aumento de densidade, velocidades mantidas. |
-| **LOS C** | $0.55 < v/c \le 0.75$ | `#ffffbf` | 1.0 mm | **Fluxo Restrito:** Liberdade de manobra reduzida, velocidade influenciada pelo tráfego. |
-| **LOS D** | $0.75 < v/c \le 0.90$ | `#fdae61` | 1.2 mm | **Fluxo Próximo da Instabilidade:** Alta densidade, pequenas perturbações causam retenção. |
-| **LOS E** | $0.90 < v/c \le 1.00$ | `#d7191c` | 1.5 mm | **Capacidade Máxima:** Operação no limite operacional, fluxo altamente instável. |
-| **LOS F** | $v/c > 1.00$ | `#7b3294` | 2.0 mm | **Sobre-saturação:** Demanda excede a capacidade teórica; formação de filas e congestionamento. |
+| **LOS A** | `v/c <= 0.35` | `#1a9641` | 0.6 mm | **Fluxo Livre:** Condição excelente, sem restrição de manobra. |
+| **LOS B** | `0.35 < v/c <= 0.55` | `#a6d96a` | 0.8 mm | **Fluxo Estável:** Pequeno aumento de densidade, velocidades mantidas. |
+| **LOS C** | `0.55 < v/c <= 0.75` | `#ffffbf` | 1.0 mm | **Fluxo Restrito:** Liberdade de manobra reduzida, velocidade influenciada pelo tráfego. |
+| **LOS D** | `0.75 < v/c <= 0.90` | `#fdae61` | 1.2 mm | **Fluxo Próximo da Instabilidade:** Alta densidade, pequenas perturbações causam retenção. |
+| **LOS E** | `0.90 < v/c <= 1.00` | `#d7191c` | 1.5 mm | **Capacidade Máxima:** Operação no limite operacional, fluxo altamente instável. |
+| **LOS F** | `v/c > 1.00` | `#7b3294` | 2.0 mm | **Sobre-saturação:** Demanda excede a capacidade teórica; formação de filas e congestionamento. |
 
 !!! warning "LOS como aproximação operacional"
-    A atribuição do Nível de Serviço no campo `los` e na simbologia automática é uma **aproximação derivada do indicador $v/c$**. O procedimento oficial do HCM 6ª Edição define o LOS através de parâmetros de desempenho específicos: *Percent Time-Spent-Following (PTSF)* e *Average Travel Speed (ATS)* para rodovias de pista simples (Capítulo 15), ou densidade de veículos por quilômetro e por faixa para rodovias multifaixas e freeways (Capítulo 12).
+    A atribuição do Nível de Serviço no campo `los` e na simbologia automática é uma **aproximação derivada do indicador `v/c`**. O procedimento oficial do HCM 6ª Edição define o LOS através de parâmetros de desempenho específicos: *Percent Time-Spent-Following (PTSF)* e *Average Travel Speed (ATS)* para rodovias de pista simples (Capítulo 15), ou densidade de veículos por quilômetro e por faixa para rodovias multifaixas e freeways (Capítulo 12).

@@ -1,0 +1,19 @@
+/* Tabelas de referência (campos de saída, parâmetros HCM) têm muitas colunas
+   e saem apertadas no tema padrão: reduz a fonte e deixa o texto quebrar. */
+.md-typeset table:not([class]) {
+  font-size: .68rem;
+  line-height: 1.4;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  padding: .5em .8em;
+  white-space: normal;
+}
+
+/* Dá mais largura útil ao conteúdo nas telas grandes, para as tabelas largas. */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: 68rem;
+  }
+}

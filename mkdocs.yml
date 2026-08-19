@@ -7,6 +7,8 @@ exclude_docs: topicos/
 theme:
   name: material
   language: pt-BR
+  logo: assets/logo.png
+  favicon: assets/logo.png
 
 plugins:
   - search:
@@ -41,3 +43,5 @@ nav:
   - Histórico de versões: changelog.md
   - English: en/overview.md
 
+extra_css:
+  - stylesheets/extra.css

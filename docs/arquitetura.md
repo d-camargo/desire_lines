@@ -55,7 +55,7 @@ Estes módulos não importam nenhum componente do QGIS e podem ser executados/te
 Estes módulos utilizam classes do QGIS (`QgsVectorLayer`, `QgsFeature`, `QgsGraphAnalyzer`, etc.) e exigem o ambiente QGIS inicializado:
 
 - **`aon.py`**: Utiliza processamento nativo do QGIS (`native:delaunaytriangulation`, `native:polygonstolines`, etc.) e `QgsGraphAnalyzer` para a rede sintética.
-- **`traffic/outputs.py`**: Constrói as camadas vetoriais de saída e aplica a simbologia graduada por $v/c$.
+- **`traffic/outputs.py`**: Constrói as camadas vetoriais de saída e aplica a simbologia graduada por `v/c`.
 - **`traffic/gisbr_bridge.py`**: Faz chamadas via `processing.run('gisbr:...')` ou importa módulos internos do GISBR.
 - **`desirelines_dialog.py` / `desirelines.py`**: Interagem diretamente com os widgets Qt e a interface do usuário.
 
@@ -112,7 +112,7 @@ As decisões de arquitetura a seguir orientaram o desenvolvimento do módulo de 
 
 - **D1 — HCM-CALC é referência, não dependência**: O HCM-CALC é um aplicativo Windows sem licença livre declarada; os algoritmos do HCM foram reimplementados em Python puro e os exemplos do HCM-CALC são usados apenas como referência nos testes unitários.
 - **D2 — Escopo HCM rodoviário restrito ao SNV/DER**: Cobre trechos de pista simples (HCM cap. 15) e pista dupla/multilane/freeway (cap. 12); exclui interseções semaforizadas e cruzamentos urbanos devido à ausência desses dados na base rodoviária oficial.
-- **D3 — LOS por faixas de $v/c$ (aproximação declarada)**: O Nível de Serviço (LOS de A a F) é determinado por faixas da razão volume/capacidade ($v/c$) para diagnóstico rápido de gargalos, já que a base nacional não fornece a densidade exata do HCM.
+- **D3 — LOS por faixas de `v/c` (aproximação declarada)**: O Nível de Serviço (LOS de A a F) é determinado por faixas da razão volume/capacidade (`v/c`) para diagnóstico rápido de gargalos, já que a base nacional não fornece a densidade exata do HCM.
 - **D4 — Grafo próprio em Python (`heapq`), não `QgsGraph`**: O `QgsGraph` cria arestas por segmento geométrico sem vínculo com os links da feição, o que impediria recalcular o custo do link a cada iteração do MSA; o grafo próprio em Python resolve isso e suporta malhas de até ~50.000 arcos.
 - **D5 — Arcos direcionados (um por sentido)**: Cada trecho rodoviário é representado por dois arcos direcionados independentes (A→B e B→A, com geometrias invertidas), permitindo fluxos, capacidades e custos direcionais.
 - **D6 — GISBR como dependência com checagem em runtime**: Declara `plugin_dependencies=GisBR` no `metadata.txt`, mas faz a verificação em runtime em `gisbr_bridge.py` para desabilitar suavemente a aba 4 se o plugin GISBR não estiver instalado no QGIS.
