@@ -4,217 +4,112 @@
 <context>
     <name>DesireLines</name>
     <message>
-        <location filename="../desirelines.py" line="178"/>
+        <location filename="../desirelines.py" line="209"/>
         <source>&amp;Desire Lines</source>
         <translation>&amp;Desire Lines</translation>
     </message>
     <message>
-        <location filename="../desirelines.py" line="166"/>
+        <location filename="../desirelines.py" line="174"/>
         <source>Desire Lines</source>
         <translation>Desire Lines</translation>
+    </message>
+    <message>
+        <location filename="../desirelines.py" line="180"/>
+        <source>Alocação em rodovias</source>
+        <translation>Alocação em rodovias</translation>
     </message>
 </context>
 <context>
     <name>DesireLinesDialog</name>
     <message>
-        <location filename="../desirelines_dialog.py" line="166"/>
+        <location filename="../desirelines_dialog.py" line="144"/>
         <source>Layer {!r} not found. {}</source>
         <translation>Camada {!r} não encontrada. {}</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="187"/>
+        <location filename="../desirelines_dialog.py" line="165"/>
         <source>Select a CSV matrix file first.</source>
         <translation>Selecione primeiro um arquivo CSV de matriz.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="192"/>
+        <location filename="../desirelines_dialog.py" line="170"/>
         <source>pandas is required for wide-to-long conversion. Install it in the QGIS Python environment and reload the plugin.</source>
         <translation>O pandas é necessário para a conversão de formato largo para longo. Instale-o no ambiente Python do QGIS e recarregue o plugin.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="220"/>
+        <location filename="../desirelines_dialog.py" line="198"/>
         <source>Select a vector file first.</source>
         <translation>Selecione primeiro um arquivo vetorial.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="225"/>
+        <location filename="../desirelines_dialog.py" line="203"/>
         <source>Layer failed to load!</source>
         <translation>Falha ao carregar a camada!</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="309"/>
+        <location filename="../desirelines_dialog.py" line="287"/>
         <source>Invalid layer or field name: {!r}. Use letters (including accents), digits, spaces, underscores, dots or hyphens — no quotes or semicolons.</source>
         <translation>Nome de camada ou campo inválido: {!r}. Use letras (inclusive acentuadas), dígitos, espaços, sublinhados, pontos ou hífens — sem aspas ou ponto e vírgula.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="349"/>
+        <location filename="../desirelines_dialog.py" line="327"/>
         <source>Generating desire lines…</source>
         <translation>Gerando linhas de desejo…</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="482"/>
+        <location filename="../desirelines_dialog.py" line="429"/>
         <source>Need at least 3 valid centroids to build a Delaunay network.</source>
         <translation>São necessários pelo menos 3 centroides válidos para construir uma rede de Delaunay.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="494"/>
+        <location filename="../desirelines_dialog.py" line="441"/>
         <source>source CRS is already metric</source>
         <translation>o SRC de origem já é métrico</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="496"/>
+        <location filename="../desirelines_dialog.py" line="443"/>
         <source>auto UTM zone {} (EPSG:{})</source>
         <translation>zona UTM automática {} (EPSG:{})</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="499"/>
+        <location filename="../desirelines_dialog.py" line="446"/>
         <source>Brazil Albers (EPSG:{})</source>
         <translation>Albers Brasil (EPSG:{})</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="502"/>
+        <location filename="../desirelines_dialog.py" line="449"/>
         <source>could not determine a metric CRS automatically; reproject the centroids to a metric system (UTM) and try again</source>
         <translation>não foi possível determinar um SRC métrico automaticamente; reprojete os centroides para um sistema métrico (UTM) e tente novamente</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="534"/>
+        <location filename="../desirelines_dialog.py" line="481"/>
         <source>No OD pairs matched the centroid ids. Check that Origin, Destination and Traffic ID refer to the same id scheme.</source>
         <translation>Nenhum par OD correspondeu aos ids dos centroides. Verifique se Origem, Destino e ID de Tráfego usam o mesmo esquema de id.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="541"/>
+        <location filename="../desirelines_dialog.py" line="488"/>
         <source>Allocating (AoN over Delaunay)…</source>
         <translation>Alocando (AoN sobre Delaunay)…</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="561"/>
+        <location filename="../desirelines_dialog.py" line="508"/>
         <source>{} unreachable (disconnected graph)</source>
         <translation>{} inacessível(is) (grafo desconectado)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="1052"/>
+        <location filename="../desirelines_dialog.py" line="511"/>
         <source>{} matrix rows had unknown ids</source>
         <translation>{} linha(s) da matriz com ids desconhecidos</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="566"/>
+        <location filename="../desirelines_dialog.py" line="513"/>
         <source>{} skipped</source>
         <translation>{} ignorado(s)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog.py" line="568"/>
+        <location filename="../desirelines_dialog.py" line="515"/>
         <source>AoN done: {} pairs allocated over {} edges using {}{}</source>
         <translation>AoN concluído: {} pares alocados em {} arestas usando {}{}</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="635"/>
-        <source>no</source>
-        <translation>não</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="635"/>
-        <source>yes</source>
-        <translation>sim</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="652"/>
-        <source>field:</source>
-        <translation>campo:</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="800"/>
-        <source>Could not fetch the highway network from GisBR: {}</source>
-        <translation>Falha ao obter a malha rodoviária do GisBR: {}</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="833"/>
-        <source>The highway network is empty after clipping.</source>
-        <translation>A malha rodoviária ficou vazia após o recorte.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="844"/>
-        <source>{} of {} arcs dropped for null or invalid capacity.</source>
-        <translation>{} de {} arcos descartados por capacidade nula ou inválida.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="849"/>
-        <source>No arc has a valid capacity; check the HCM parameters.</source>
-        <translation>Nenhum arco tem capacidade válida; revise os parâmetros HCM.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="866"/>
-        <source>No centroid could be connected to the highway network (nearest node farther than {:.0f} m).</source>
-        <translation>Nenhum centróide pôde ser conectado à malha rodoviária (nó mais próximo além de {:.0f} m).</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="871"/>
-        <source>{} centroid(s) not connected to the highway network.</source>
-        <translation>{} centróide(s) não conectados à malha rodoviária.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="928"/>
-        <source>parameters: {} official, {} default, {} set by the user</source>
-        <translation>parâmetros: {} de dado oficial, {} do padrão, {} definidos pelo usuário</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="933"/>
-        <source>{} urban arc(s): HCM highway capacity does not apply to urban crossings — read those with care</source>
-        <translation>{} arco(s) urbano(s): a capacidade HCM rodoviária não se aplica a travessias urbanas — leia esses trechos com ressalva</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="944"/>
-        <source>Computing HCM capacity…</source>
-        <translation>Calculando capacidade HCM…</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="964"/>
-        <source>Capacity computed for {} directed arcs — {}</source>
-        <translation>Capacidade calculada para {} arcos direcionados — {}</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="986"/>
-        <source>The centroids layer has no usable geometry.</source>
-        <translation>A camada de centróides não tem geometria utilizável.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="997"/>
-        <source>Assigning traffic ({})…</source>
-        <translation>Alocando tráfego ({})…</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1022"/>
-        <source>No OD pair matches the connected centroids. Check that Origin, Destination and Traffic id use the same id scheme.</source>
-        <translation>Nenhum par OD corresponde aos centróides conectados. Verifique se Origem, Destino e Id de tráfego usam o mesmo esquema de identificação.</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1035"/>
-        <source>Traffic assignment failed: {}</source>
-        <translation>Falha ao executar a alocação de tráfego: {}</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1045"/>
-        <source>gap: n/a — AoN does not feed capacity back into cost, so v/c above 1 diagnoses overload, not equilibrium</source>
-        <translation>gap: n/a — o AoN não realimenta a capacidade no custo, então v/c acima de 1 é diagnóstico de sobrecarga, não equilíbrio</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1049"/>
-        <source>final gap: {:.4f} in {} iteration(s)</source>
-        <translation>gap final: {:.4f} em {} iteração(ões)</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1054"/>
-        <source>{} pairs unreachable (disconnected network)</source>
-        <translation>{} pares inalcançáveis (rede desconexa)</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="1056"/>
-        <source>{} done: {} pairs allocated over {} arcs — {}</source>
-        <translation>{} concluído: {} pares alocados sobre {} arcos — {}</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog.py" line="817"/>
-        <source>Could not clip the network to the study area ({}); using the full mesh.</source>
-        <translation>Não foi possível recortar a malha pela área de estudo ({}); usando a malha completa.</translation>
     </message>
 </context>
 <context>
@@ -275,12 +170,12 @@
         <translation>Matriz</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="704"/>
+        <location filename="../desirelines_dialog_base.ui" line="400"/>
         <source>Centroids</source>
         <translation>Centroides</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="674"/>
+        <location filename="../desirelines_dialog_base.ui" line="420"/>
         <source>Origin</source>
         <translation>Origem</translation>
     </message>
@@ -290,7 +185,7 @@
         <translation>ID de Tráfego</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="684"/>
+        <location filename="../desirelines_dialog_base.ui" line="454"/>
         <source>Destination</source>
         <translation>Destino</translation>
     </message>
@@ -329,120 +224,271 @@
         <source>Allocate (AoN)</source>
         <translation>Alocar (AoN)</translation>
     </message>
+</context>
+<context>
+    <name>DesireLinesTrafficPanel</name>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="550"/>
-        <source>Alocação em rodovias</source>
-        <translation>Alocação em rodovias</translation>
+        <location filename="../traffic_panel_base.ui" line="14"/>
+        <source>Desire Lines — Alocação em rodovias</source>
+        <translation>Desire Lines — Alocação em rodovias</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="556"/>
+        <location filename="../traffic_panel_base.ui" line="21"/>
         <source>The GisBR plugin is required to download the official highway network.</source>
         <translation>O plugin GisBR é necessário para baixar a malha rodoviária oficial.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="566"/>
+        <location filename="../traffic_panel_base.ui" line="31"/>
         <source>Scope: rural/interurban highways (HCM ch. 12 and 15). Urban stretches are flagged escopo='urbano' — urban capacity follows a different procedure and is out of scope.</source>
         <translation>Escopo: rodovias rurais/interurbanas (HCM cap. 12 e 15). Trechos urbanos são marcados com escopo='urbano' — a capacidade em área urbana segue outro procedimento e está fora do escopo.</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="576"/>
+        <location filename="../traffic_panel_base.ui" line="45"/>
+        <source>Alocação</source>
+        <translation>Alocação</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="55"/>
         <source>Network</source>
         <translation>Rede</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="582"/>
+        <location filename="../traffic_panel_base.ui" line="61"/>
         <source>Use an existing layer</source>
         <translation>Usar uma camada existente</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="592"/>
+        <location filename="../traffic_panel_base.ui" line="71"/>
         <source>Highway layer</source>
         <translation>Camada da malha rodoviária</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="602"/>
+        <location filename="../traffic_panel_base.ui" line="81"/>
         <source>Link id field (optional)</source>
         <translation>Campo de id do link (opcional)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="616"/>
+        <location filename="../traffic_panel_base.ui" line="95"/>
         <source>Download via GisBR (official SNV/DER network)</source>
         <translation>Baixar via GisBR (malha oficial SNV/DER)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="623"/>
+        <location filename="../traffic_panel_base.ui" line="102"/>
         <source>State (UF)</source>
         <translation>Estado (UF)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="637"/>
+        <location filename="../traffic_panel_base.ui" line="116"/>
         <source>Clip to the centroids extent (plus buffer)</source>
         <translation>Recortar pela extensão dos centróides (mais buffer)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="650"/>
-        <source>HCM parameters (default, or override globally / by field)</source>
-        <translation>Parâmetros HCM (padrão, ou sobrescritos globalmente / por campo)</translation>
-    </message>
-    <message>
-        <location filename="../desirelines_dialog_base.ui" line="658"/>
+        <location filename="../traffic_panel_base.ui" line="129"/>
         <source>Assignment</source>
         <translation>Alocação</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="664"/>
+        <location filename="../traffic_panel_base.ui" line="135"/>
         <source>OD matrix</source>
         <translation>Matriz OD</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="694"/>
+        <location filename="../traffic_panel_base.ui" line="145"/>
+        <source>Origin</source>
+        <translation>Origem</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="155"/>
+        <source>Destination</source>
+        <translation>Destino</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="165"/>
         <source>Demand (veh/h)</source>
         <translation>Demanda (veíc/h)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="714"/>
+        <location filename="../traffic_panel_base.ui" line="175"/>
+        <source>Centroids</source>
+        <translation>Centroides</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="185"/>
         <source>Traffic id</source>
         <translation>Id de tráfego</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="724"/>
+        <location filename="../traffic_panel_base.ui" line="195"/>
         <source>Max connector (m)</source>
         <translation>Conector máx. (m)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="747"/>
+        <location filename="../traffic_panel_base.ui" line="218"/>
         <source>Method</source>
         <translation>Método</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="755"/>
+        <location filename="../traffic_panel_base.ui" line="226"/>
         <source>All-or-Nothing (no capacity restraint)</source>
         <translation>All-or-Nothing (sem restrição de capacidade)</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="760"/>
+        <location filename="../traffic_panel_base.ui" line="231"/>
         <source>Equilibrium MSA + BPR</source>
         <translation>Equilíbrio MSA + BPR</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="768"/>
+        <location filename="../traffic_panel_base.ui" line="239"/>
         <source>Iterations</source>
         <translation>Iterações</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="788"/>
+        <location filename="../traffic_panel_base.ui" line="259"/>
         <source>Gap tolerance</source>
         <translation>Tolerância de gap</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="832"/>
+        <location filename="../traffic_panel_base.ui" line="288"/>
+        <source>GeoPackage de saída</source>
+        <translation>GeoPackage de saída</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="313"/>
         <source>Compute capacity</source>
         <translation>Calcular capacidade</translation>
     </message>
     <message>
-        <location filename="../desirelines_dialog_base.ui" line="839"/>
+        <location filename="../traffic_panel_base.ui" line="320"/>
         <source>Assign</source>
         <translation>Alocar</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="344"/>
+        <source>Parâmetros HCM</source>
+        <translation>Parâmetros HCM</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel_base.ui" line="354"/>
+        <source>HCM parameters (default, or override globally / by field)</source>
+        <translation>Parâmetros HCM (padrão, ou sobrescritos globalmente / por campo)</translation>
+    </message>
+</context>
+<context>
+    <name>TrafficAssignmentPanel</name>
+    <message>
+        <location filename="../traffic_panel.py" line="89"/>
+        <source>no</source>
+        <translation>não</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="89"/>
+        <source>yes</source>
+        <translation>sim</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="106"/>
+        <source>field:</source>
+        <translation>campo:</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="254"/>
+        <source>Could not fetch the highway network from GisBR: {}</source>
+        <translation>Falha ao obter a malha rodoviária do GisBR: {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="271"/>
+        <source>Could not clip the network to the study area ({}); using the full mesh.</source>
+        <translation>Não foi possível recortar a malha pela área de estudo ({}); usando a malha completa.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="287"/>
+        <source>The highway network is empty after clipping.</source>
+        <translation>A malha rodoviária ficou vazia após o recorte.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="298"/>
+        <source>{} of {} arcs dropped for null or invalid capacity.</source>
+        <translation>{} de {} arcos descartados por capacidade nula ou inválida.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="303"/>
+        <source>No arc has a valid capacity; check the HCM parameters.</source>
+        <translation>Nenhum arco tem capacidade válida; revise os parâmetros HCM.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="320"/>
+        <source>No centroid could be connected to the highway network (nearest node farther than {:.0f} m).</source>
+        <translation>Nenhum centróide pôde ser conectado à malha rodoviária (nó mais próximo além de {:.0f} m).</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="325"/>
+        <source>{} centroid(s) not connected to the highway network.</source>
+        <translation>{} centróide(s) não conectados à malha rodoviária.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="382"/>
+        <source>parameters: {} official, {} default, {} set by the user</source>
+        <translation>parâmetros: {} de dado oficial, {} do padrão, {} definidos pelo usuário</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="387"/>
+        <source>{} urban arc(s): HCM highway capacity does not apply to urban crossings — read those with care</source>
+        <translation>{} arco(s) urbano(s): a capacidade HCM rodoviária não se aplica a travessias urbanas — leia esses trechos com ressalva</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="398"/>
+        <source>Computing HCM capacity…</source>
+        <translation>Calculando capacidade HCM…</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="418"/>
+        <source>Capacity computed for {} directed arcs — {}</source>
+        <translation>Capacidade calculada para {} arcos direcionados — {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="440"/>
+        <source>The centroids layer has no usable geometry.</source>
+        <translation>A camada de centróides não tem geometria utilizável.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="451"/>
+        <source>Assigning traffic ({})…</source>
+        <translation>Alocando tráfego ({})…</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="476"/>
+        <source>No OD pair matches the connected centroids. Check that Origin, Destination and Traffic id use the same id scheme.</source>
+        <translation>Nenhum par OD corresponde aos centróides conectados. Verifique se Origem, Destino e Id de tráfego usam o mesmo esquema de identificação.</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="489"/>
+        <source>Traffic assignment failed: {}</source>
+        <translation>Falha ao executar a alocação de tráfego: {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="499"/>
+        <source>gap: n/a — AoN does not feed capacity back into cost, so v/c above 1 diagnoses overload, not equilibrium</source>
+        <translation>gap: n/a — o AoN não realimenta a capacidade no custo, então v/c acima de 1 é diagnóstico de sobrecarga, não equilíbrio</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="503"/>
+        <source>final gap: {:.4f} in {} iteration(s)</source>
+        <translation>gap final: {:.4f} em {} iteração(ões)</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="506"/>
+        <source>{} matrix rows had unknown ids</source>
+        <translation>{} linha(s) da matriz com ids desconhecidos</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="508"/>
+        <source>{} pairs unreachable (disconnected network)</source>
+        <translation>{} pares inalcançáveis (rede desconexa)</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="510"/>
+        <source>{} done: {} pairs allocated over {} arcs — {}</source>
+        <translation>{} concluído: {} pares alocados sobre {} arcos — {}</translation>
     </message>
 </context>
 </TS>

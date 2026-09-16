@@ -65,7 +65,7 @@ A busca por campos oficiais é feita de forma flexível:
 
 ### 3.2 Sobrescrita Global na Interface (`usuario`)
 
-Na **Aba 4 — Alocação em Rodovias**, o usuário tem a opção de definir valores globais na interface gráfica para qualquer um dos parâmetros HCM.
+No painel **Alocação em rodovias**, na aba **Parâmetros HCM** ("HCM parameters"), o usuário tem a opção de definir valores globais na interface gráfica para qualquer um dos parâmetros HCM.
 
 * Quando um valor é especificado no painel da interface, ele possui a maior prioridade e substitui tanto os valores padrão quanto os atributos existentes na camada vetorial.
 * A proveniência gravada no campo `src_*` da camada resultante será marcada como **`usuario`**.

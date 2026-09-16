@@ -60,5 +60,9 @@ class TestInit(unittest.TestCase):
 
             self.assertIn(expectation, dict(metadata), message)
 
+        meta_dict = dict(metadata)
+        self.assertEqual(meta_dict.get('qgisMaximumVersion'), '4.99', "qgisMaximumVersion must be 4.99")
+        self.assertEqual(meta_dict.get('supportsQt6'), 'True', "supportsQt6 must be True")
+
 if __name__ == '__main__':
     unittest.main()

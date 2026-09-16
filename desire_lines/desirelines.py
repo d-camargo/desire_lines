@@ -22,13 +22,14 @@
  ***************************************************************************/
 """
 import os
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
 
 # Import the code for the dialog
 from .desirelines_dialog import DesireLinesDialog
+from .traffic_panel import TrafficAssignmentPanel
 
 
 class DesireLines:
@@ -48,6 +49,7 @@ class DesireLines:
         # (inside classFactory) is fragile and the widget would be discarded
         # on first run() anyway.
         self.dlg = None
+        self.traffic_panel = None
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
@@ -95,7 +97,8 @@ class DesireLines:
             add_to_toolbar=True,
             status_tip=None,
             whats_this=None,
-            parent=None):
+            parent=None,
+            checkable=False):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -130,6 +133,8 @@ class DesireLines:
         :param whats_this: Optional text to show in the status bar when the
             mouse pointer hovers over the action.
 
+        :param checkable: Flag indicating whether the action should be checkable.
+
         :returns: The action that was created. Note that the action is also
             added to self.actions list.
         :rtype: QAction
@@ -139,6 +144,9 @@ class DesireLines:
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
+
+        if checkable:
+            action.setCheckable(True)
 
         if status_tip is not None:
             action.setStatusTip(status_tip)
@@ -169,11 +177,34 @@ class DesireLines:
             callback=self.run,
             parent=self.iface.mainWindow())
 
+        self.add_action(
+            icon_path,
+            text=self.tr(u'Alocação em rodovias'),
+            callback=self.show_traffic_panel,
+            parent=self.iface.mainWindow(),
+            checkable=True)
+
         # will be set False in run()
         self.first_start = True
 
+    def show_traffic_panel(self):
+        """Show or toggle the Traffic Assignment dock widget."""
+        if self.traffic_panel is None:
+            self.traffic_panel = TrafficAssignmentPanel(self.iface.mainWindow())
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.traffic_panel)
+            self.traffic_panel.show()
+        else:
+            if self.traffic_panel.isVisible():
+                self.traffic_panel.hide()
+            else:
+                self.traffic_panel.show()
+
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
+        if self.traffic_panel is not None:
+            self.iface.removeDockWidget(self.traffic_panel)
+            self.traffic_panel.deleteLater()
+            self.traffic_panel = None
         for action in self.actions:
             self.iface.removePluginVectorMenu(
                 self.tr(u'&Desire Lines'),
