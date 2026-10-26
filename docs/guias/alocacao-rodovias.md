@@ -58,6 +58,9 @@ A escolha da fonte rodoviária é feita de forma automática a partir do catálo
 
 Quando utilizada a opção *Usar uma camada existente*, a área de estudo também é recortada pela extensão dos centroides (com buffer de conector), limitando o tamanho da rede e acelerando a montagem do grafo. Se o recorte falhar, o plugin exibe um aviso e segue com a malha inteira.
 
+!!! note "Reprojeção automática para CRS métrico"
+    Camadas em CRS geográfico (graus) — tanto no download via GisBR quanto em camada existente — são reprojetadas sozinhas para um CRS métrico (UTM da região, ou SIRGAS 2000 / Brazil Albers se a área cobrir mais de uma zona). A camada de saída sai nesse CRS, e o aviso *Malha rodoviária reprojetada…* (*Highway network reprojected…*) aparece na barra de mensagens (*message bar*).
+
 ### A alocação
 
 O grupo *Alocação* ("Assignment") pede a matriz e os centroides:

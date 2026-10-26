@@ -381,154 +381,164 @@
 <context>
     <name>TrafficAssignmentPanel</name>
     <message>
-        <location filename="../traffic_panel.py" line="104"/>
+        <location filename="../traffic_panel.py" line="111"/>
         <source>no</source>
         <translation>não</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="104"/>
+        <location filename="../traffic_panel.py" line="111"/>
         <source>yes</source>
         <translation>sim</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="121"/>
+        <location filename="../traffic_panel.py" line="128"/>
         <source>field:</source>
         <translation>campo:</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="284"/>
+        <location filename="../traffic_panel.py" line="311"/>
         <source>Could not fetch the highway network from GisBR: {}</source>
         <translation>Falha ao obter a malha rodoviária do GisBR: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="301"/>
+        <location filename="../traffic_panel.py" line="370"/>
         <source>Could not clip the network to the study area ({}); using the full mesh.</source>
         <translation>Não foi possível recortar a malha pela área de estudo ({}); usando a malha completa.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="317"/>
+        <location filename="../traffic_panel.py" line="386"/>
         <source>The highway network is empty after clipping.</source>
         <translation>A malha rodoviária ficou vazia após o recorte.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="328"/>
+        <location filename="../traffic_panel.py" line="397"/>
         <source>{} of {} arcs dropped for null or invalid capacity.</source>
         <translation>{} de {} arcos descartados por capacidade nula ou inválida.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="333"/>
+        <location filename="../traffic_panel.py" line="402"/>
         <source>No arc has a valid capacity; check the HCM parameters.</source>
         <translation>Nenhum arco tem capacidade válida; revise os parâmetros HCM.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="350"/>
+        <location filename="../traffic_panel.py" line="418"/>
         <source>No centroid could be connected to the highway network (nearest node farther than {:.0f} m).</source>
         <translation>Nenhum centróide pôde ser conectado à malha rodoviária (nó mais próximo além de {:.0f} m).</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="355"/>
+        <location filename="../traffic_panel.py" line="423"/>
         <source>{} centroid(s) not connected to the highway network.</source>
         <translation>{} centróide(s) não conectados à malha rodoviária.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="421"/>
+        <location filename="../traffic_panel.py" line="489"/>
         <source>parameters: {} official, {} default, {} set by the user</source>
         <translation>parâmetros: {} de dado oficial, {} do padrão, {} definidos pelo usuário</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="426"/>
+        <location filename="../traffic_panel.py" line="494"/>
         <source>{} urban arc(s): HCM highway capacity does not apply to urban crossings — read those with care</source>
         <translation>{} arco(s) urbano(s): a capacidade HCM rodoviária não se aplica a travessias urbanas — leia esses trechos com ressalva</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="453"/>
+        <location filename="../traffic_panel.py" line="526"/>
         <source>Computing HCM capacity…</source>
         <translation>Calculando capacidade HCM…</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="474"/>
+        <location filename="../traffic_panel.py" line="549"/>
         <source>Capacity computed for {} directed arcs — {}</source>
         <translation>Capacidade calculada para {} arcos direcionados — {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="496"/>
+        <location filename="../traffic_panel.py" line="571"/>
         <source>The centroids layer has no usable geometry.</source>
         <translation>A camada de centróides não tem geometria utilizável.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="512"/>
+        <location filename="../traffic_panel.py" line="594"/>
         <source>Assigning traffic ({})…</source>
         <translation>Alocando tráfego ({})…</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="537"/>
+        <location filename="../traffic_panel.py" line="621"/>
         <source>No OD pair matches the connected centroids. Check that Origin, Destination and Traffic id use the same id scheme.</source>
         <translation>Nenhum par OD corresponde aos centróides conectados. Verifique se Origem, Destino e Id de tráfego usam o mesmo esquema de identificação.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="550"/>
+        <location filename="../traffic_panel.py" line="634"/>
         <source>Traffic assignment failed: {}</source>
         <translation>Falha ao executar a alocação de tráfego: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="560"/>
+        <location filename="../traffic_panel.py" line="644"/>
         <source>gap: n/a — AoN does not feed capacity back into cost, so v/c above 1 diagnoses overload, not equilibrium</source>
         <translation>gap: n/a — o AoN não realimenta a capacidade no custo, então v/c acima de 1 é diagnóstico de sobrecarga, não equilíbrio</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="564"/>
+        <location filename="../traffic_panel.py" line="648"/>
         <source>final gap: {:.4f} in {} iteration(s)</source>
         <translation>gap final: {:.4f} em {} iteração(ões)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="567"/>
+        <location filename="../traffic_panel.py" line="651"/>
         <source>{} matrix rows had unknown ids</source>
         <translation>{} linha(s) da matriz com ids desconhecidos</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="569"/>
+        <location filename="../traffic_panel.py" line="653"/>
         <source>{} pairs unreachable (disconnected network)</source>
         <translation>{} pares inalcançáveis (rede desconexa)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="571"/>
+        <location filename="../traffic_panel.py" line="655"/>
         <source>{} done: {} pairs allocated over {} arcs — {}</source>
         <translation>{} concluído: {} pares alocados sobre {} arcos — {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Centroid extent (+ radius)</source>
         <translation>Extensão dos centroides (+ raio)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Whole state</source>
         <translation>UF inteira</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Metropolitan area</source>
         <translation>Região Metropolitana</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Micro-region</source>
         <translation>Microrregião</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Meso-region</source>
         <translation>Mesorregião</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="46"/>
+        <location filename="../traffic_panel.py" line="53"/>
         <source>Health macro-region</source>
         <translation>Macrorregião de saúde</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="505"/>
+        <location filename="../traffic_panel.py" line="584"/>
         <source>Could not obtain region extent: {}</source>
         <translation>Não foi possível obter a extensão da região: {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="331"/>
+        <source>Could not reproject the highway network to a metric CRS: {}</source>
+        <translation>Falha ao reprojetar a malha rodoviária para um CRS métrico: {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="336"/>
+        <source>Highway network reprojected from {} to {} for metric computations.</source>
+        <translation>Malha rodoviária reprojetada de {} para {} para os cálculos métricos.</translation>
     </message>
 </context>
 </TS>

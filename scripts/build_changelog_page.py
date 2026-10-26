@@ -57,6 +57,18 @@ def parse_metadata_changelog(metadata_path: Path) -> list[tuple[str, list[str]]]
     return entries
 
 
+# Notas de versão em PT-BR para o site. O changelog de desire_lines/metadata.txt
+# é em inglês (páginas do plugins.qgis.org); a página do site é em português.
+# Versões sem entrada aqui mantêm o texto inglês do metadata.txt, como antes.
+PTBR_NOTES: dict[str, list[str]] = {
+    "0.6.1": [
+        "- Correção: a alocação em rodovias (*Highway Assignment*) não cria mais links inexistentes na rede quando a camada está em CRS geográfico (ex.: GisBR EPSG:4674, EPSG:4326) — a malha agora é reprojetada para um CRS métrico antes do *snapping*, cálculo de comprimentos e conectores.",
+        "- Correção: conectores de zona não podem mais ser encadeados como atalho entre dois nós da rede.",
+        "- Teste de regressão na rede de referência de Sioux Falls.",
+    ],
+}
+
+
 def build_changelog_markdown(entries: list[tuple[str, list[str]]]) -> str:
     """Gera o texto em Markdown a partir dos blocos de versão."""
     md_lines = [
@@ -69,7 +81,7 @@ def build_changelog_markdown(entries: list[tuple[str, list[str]]]) -> str:
     for version, lines in entries:
         md_lines.append(f"## {version}")
         md_lines.append("")
-        for line in lines:
+        for line in PTBR_NOTES.get(version, lines):
             md_lines.append(line)
         md_lines.append("")
 

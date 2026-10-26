@@ -72,7 +72,7 @@ class PluginUiMixin:
 
         Also records it in ``self.last_message`` so the edge-case tests can
         assert *which* message the user would have seen without needing a live
-        message bar. Levels: 'critical', 'warning', 'success'.
+        message bar. Levels: 'critical', 'warning', 'success', 'info'.
         """
         self.last_message = (level, text)
         mb = iface.messageBar() if iface is not None else None
@@ -82,5 +82,7 @@ class PluginUiMixin:
             mb.pushCritical('Desire Lines', text)
         elif level == 'success':
             mb.pushSuccess('Desire Lines', text)
+        elif level == 'info':
+            mb.pushInfo('Desire Lines', text)
         else:
             mb.pushWarning('Desire Lines', text)

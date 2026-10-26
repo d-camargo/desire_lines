@@ -2,8 +2,8 @@
 """Testes unitários para o módulo de rede (network.py)."""
 
 import unittest
-from unittest.mock import patch
-from desire_lines.traffic import network
+from unittest.mock import MagicMock, patch
+from desire_lines.traffic import graph, network
 from desire_lines.traffic.network import (
     Arc,
     node_key,
@@ -14,6 +14,7 @@ from desire_lines.traffic.network import (
     build_network,
     clip_and_clean,
     connect_centroids,
+    reproject_layer,
 )
 
 
@@ -97,6 +98,33 @@ class TestNetworkModule(unittest.TestCase):
         self.assertEqual(fw_ids, [(10, 'fw'), (20, 'fw')])
 
     @patch('desire_lines.traffic.network._run_processing_alg')
+    def test_reproject_layer(self, mock_run):
+        """Testa que reproject_layer chama native:reprojectlayer com TARGET_CRS."""
+        mock_run.return_value = {'OUTPUT': 'camada_reprojetada'}
+        result = reproject_layer('camada_orig', 'EPSG:32614')
+
+        self.assertEqual(result, 'camada_reprojetada')
+        mock_run.assert_called_once_with('native:reprojectlayer', {
+            'INPUT': 'camada_orig',
+            'TARGET_CRS': 'EPSG:32614',
+            'OUTPUT': 'TEMPORARY_OUTPUT',
+        })
+
+    @patch('desire_lines.traffic.network._run_processing_alg')
+    def test_clip_and_clean_raises_value_error_on_geographic_crs(self, mock_run):
+        """Testa que clip_and_clean com camada de crs().isGeographic() == True levanta ValueError e não chama Processing."""
+        mock_layer = MagicMock()
+        mock_layer.crs.return_value.isGeographic.return_value = True
+
+        with self.assertRaises(ValueError):
+            clip_and_clean(
+                road_layer=mock_layer,
+                bbox=(0, 0, 100, 100),
+            )
+
+        mock_run.assert_not_called()
+
+    @patch('desire_lines.traffic.network._run_processing_alg')
     def test_clip_and_clean_pipeline_order(self, mock_run):
         """Testa que clip_and_clean encadeia recorte -> snap -> multipart->single, com o bbox expandido pelo buffer."""
         mock_run.side_effect = [
@@ -137,11 +165,45 @@ class TestNetworkModule(unittest.TestCase):
         fw = next(a for a in connector_arcs if a.forward)
         bw = next(a for a in connector_arcs if not a.forward)
         self.assertEqual(fw.link_id, network.CONNECTOR_LINK_ID)
-        self.assertEqual(fw.from_node, (10.0, 40.0))
+        self.assertEqual(fw.from_node, (network.CONNECTOR_LINK_ID, 0))
         self.assertEqual(fw.to_node, (0.0, 0.0))
         self.assertEqual(bw.from_node, (0.0, 0.0))
-        self.assertEqual(bw.to_node, (10.0, 40.0))
+        self.assertEqual(bw.to_node, (network.CONNECTOR_LINK_ID, 0))
+        self.assertEqual(fw.geometry, [(10.0, 40.0), (0.0, 0.0)])
+        self.assertEqual(bw.geometry, [(0.0, 0.0), (10.0, 40.0)])
         self.assertAlmostEqual(fw.length, (10.0 ** 2 + 40.0 ** 2) ** 0.5)  # hypot(10, 40)
+
+    def test_connect_centroids_same_coordinate_does_not_bridge_disconnected_nodes(self):
+        """Testa que dois centróides na mesma coordenada não criam caminho no grafo entre dois nós desconectados (D5)."""
+        # Malha sem ligação entre os nós (10.0, 0.0) e (100.0, 0.0)
+        arcs1 = build_directed_arcs(link_id=1, points=[(0.0, 0.0), (10.0, 0.0)])
+        arcs2 = build_directed_arcs(link_id=2, points=[(100.0, 0.0), (110.0, 0.0)])
+        road_arcs = list(arcs1) + list(arcs2)
+
+        # Dois centróides na MESMA coordenada (50.0, 0.0)
+        c = (50.0, 0.0)
+        far = (999999.0, 999999.0)
+
+        # Centróide 0 perto de nó (10.0, 0.0); centróide 1 perto de nó (100.0, 0.0)
+        conns0, _, _ = connect_centroids(list(arcs1), [c, far], max_dist_m=60.0)
+        conns1, _, _ = connect_centroids(list(arcs2), [far, c], max_dist_m=60.0)
+
+        self.assertEqual(len(conns0), 2)
+        self.assertEqual(len(conns1), 2)
+
+        # Nós virtuais distintos por zona (D5)
+        fw0 = next(a for a in conns0 if a.forward)
+        fw1 = next(a for a in conns1 if a.forward)
+        self.assertEqual(fw0.from_node, (network.CONNECTOR_LINK_ID, 0))
+        self.assertEqual(fw1.from_node, (network.CONNECTOR_LINK_ID, 1))
+
+        # Geometria continua com a coordenada real
+        self.assertEqual(fw0.geometry[0], c)
+        self.assertEqual(fw1.geometry[0], c)
+
+        g = graph.build_graph(road_arcs + conns0 + conns1)
+        path, _ = g.path_to((10.0, 0.0), (100.0, 0.0))
+        self.assertIsNone(path)
 
     def test_connect_centroids_beyond_max_dist_is_unconnected_without_exception(self):
         """Testa que um centróide além de max_dist_m é reportado como não conectado, sem lançar exceção."""

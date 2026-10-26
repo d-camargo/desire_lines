@@ -314,6 +314,23 @@ def _run_processing_alg(alg_id, params):
     return processing.run(alg_id, params)
 
 
+def reproject_layer(layer, target_crs):
+    """Reprojeta uma camada vetorial para o CRS de destino via Processing (D2, D3).
+
+    Args:
+        layer: Camada vetorial de entrada (QgsVectorLayer ou compatível).
+        target_crs: CRS de destino (QgsCoordinateReferenceSystem ou str authid).
+
+    Returns:
+        QgsVectorLayer: Camada reprojetada.
+    """
+    return _run_processing_alg('native:reprojectlayer', {
+        'INPUT': layer,
+        'TARGET_CRS': target_crs,
+        'OUTPUT': 'TEMPORARY_OUTPUT',
+    })['OUTPUT']
+
+
 def clip_and_clean(road_layer, bbox, buffer_m=0.0, snap_tol_m=0.01):
     """Recorta a malha rodoviária pela área de estudo e uniformiza a geometria (D4).
 
@@ -325,7 +342,8 @@ def clip_and_clean(road_layer, bbox, buffer_m=0.0, snap_tol_m=0.01):
     segmento simples antes de virar arcos (D5).
 
     Args:
-        road_layer: QgsVectorLayer com a malha rodoviária bruta (D6).
+        road_layer: QgsVectorLayer com a malha rodoviária bruta (D6). Deve estar
+            em CRS projetado (métrico).
         bbox (tuple): (xmin, ymin, xmax, ymax) da área de estudo, no CRS
             (métrico) de `road_layer`.
         buffer_m (float): expansão do bbox antes do recorte, em metros.
@@ -335,8 +353,19 @@ def clip_and_clean(road_layer, bbox, buffer_m=0.0, snap_tol_m=0.01):
         QgsVectorLayer: malha recortada, com vértices ajustados e sem multipartes.
 
     Raises:
+        ValueError: se `road_layer` possuir CRS geográfico (D2, D3).
         RuntimeError: se o Processing do QGIS não estiver disponível.
     """
+    if hasattr(road_layer, 'crs'):
+        crs = road_layer.crs() if callable(road_layer.crs) else road_layer.crs
+        if crs is not None and hasattr(crs, 'isGeographic'):
+            is_geo = crs.isGeographic() if callable(crs.isGeographic) else crs.isGeographic
+            if is_geo:
+                raise ValueError(
+                    "A camada de rodovias possui CRS geográfico. "
+                    "Reprojete para um CRS projetado (métrico) antes de chamar clip_and_clean."
+                )
+
     try:
         from qgis.core import QgsRectangle
     except ImportError:
@@ -378,10 +407,13 @@ def connect_centroids(arcs, centroids, max_dist_m):
     Cada centróide conectado ganha um par de arcos (ida e volta, como em D5)
     até o nó existente mais próximo, com `link_id='conector'`, capacidade alta
     e custo desprezível (`CONNECTOR_CAPACITY_VPH`/`CONNECTOR_FFS_KMH`), para
-    servir de rampa de acesso à malha sem influenciar a alocação. Centróides
-    sem nó a até `max_dist_m` não são conectados — o motivo é reportado, sem
-    lançar exceção, para que a alocação siga normalmente para os pares OD que
-    alcançam a malha.
+    servir de rampa de acesso à malha sem influenciar a alocação. O nó do
+    centróide usa um identificador virtual `(CONNECTOR_LINK_ID, zone_id)` em
+    `from_node`/`to_node` (D5) para evitar que centróides coincidentes criem
+    atalhos espúrios entre nós da malha. A `geometry` continua com as
+    coordenadas reais `[(cx, cy), nearest]`. Centróides sem nó a até
+    `max_dist_m` não são conectados — o motivo é reportado, sem lançar exceção,
+    para que a alocação siga normalmente para os pares OD que alcançam a malha.
 
     Args:
         arcs (list): Arcos já construídos (ex.: `build_network`); seus nós
@@ -426,7 +458,7 @@ def connect_centroids(arcs, centroids, max_dist_m):
             continue
 
         zone_node[zone_id] = nearest
-        centroid_node = (cx, cy)
+        centroid_node = (CONNECTOR_LINK_ID, zone_id)
         t0 = calculate_free_flow_time(dist, CONNECTOR_FFS_KMH)
 
         connector_arcs.append(Arc(
@@ -440,7 +472,7 @@ def connect_centroids(arcs, centroids, max_dist_m):
             scope=CONNECTOR_LINK_ID,
             params={},
             sources={},
-            geometry=[centroid_node, nearest],
+            geometry=[(cx, cy), nearest],
             forward=True,
         ))
         connector_arcs.append(Arc(
@@ -454,7 +486,7 @@ def connect_centroids(arcs, centroids, max_dist_m):
             scope=CONNECTOR_LINK_ID,
             params={},
             sources={},
-            geometry=[nearest, centroid_node],
+            geometry=[nearest, (cx, cy)],
             forward=False,
         ))
 
@@ -471,4 +503,5 @@ __all__ = [
     'build_network',
     'clip_and_clean',
     'connect_centroids',
+    'reproject_layer',
 ]

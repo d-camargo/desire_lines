@@ -2,15 +2,22 @@ import os
 from qgis.PyQt import uic, QtWidgets
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QApplication
-from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
+from qgis.core import (
+    QgsCoordinateTransform,
+    QgsFieldProxyModel,
+    QgsMapLayerProxyModel,
+    QgsPointXY,
+    QgsProject,
+    QgsRectangle,
+)
 from qgis.gui import QgsFieldComboBox, QgsFileWidget, QgsDockWidget
 from qgis.utils import iface
 
 try:
-    from . import ui_common
+    from . import aon, ui_common
     from .traffic import params, network, graph, outputs, assignment, gisbr_bridge
 except ImportError:
-    import ui_common
+    import aon, ui_common
     
     from traffic import params, network, graph, outputs, assignment, gisbr_bridge
 
@@ -249,6 +256,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         bbox=None,
         crs=None,
         uf=None,
+        centroids_crs=None,
+        clip_buffer_m=None,
     ):
         """Turn a highway layer into directed arcs plus a routable graph (steps 18-19).
 
@@ -256,11 +265,21 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         GisBR download failure, empty network after clipping, non-positive
         capacity and centroids that reach no node within ``max_dist_m``.
 
+        A layer with a ``crs()`` is first moved to a metric working CRS (D1):
+        ``aon.pick_metric_crs`` keeps a projected CRS as is, and turns a
+        geographic one into its UTM zone (or SIRGAS 2000 / Brazil Albers). All
+        snap, length, connector and clipping tolerances are in metres, so in
+        degrees they would glue links to the wrong nodes. Centroids and the
+        clipping box are brought to that same CRS (D4), and
+        ``self.traffic_crs`` is set to it so the output is labelled right.
+        Inputs without ``crs()`` (lists of dicts in the tests) are used as is.
+
         Args:
             road_layer: QgsVectorLayer, iterable of QgsFeature, or list of
                 dicts with a 'geometry' key (used by the tests). None with
                 ``fetch_gisbr`` asks GisBR for the official network.
-            centroids (list | None): Zone centroids as (x, y) tuples.
+            centroids (list | None): Zone centroids as (x, y) tuples, in
+                ``centroids_crs``.
             zone_keys (list | None): Zone ids parallel to ``centroids``. When
                 None, the list index is the zone id.
             overrides (dict | None): Global parameter overrides (D7).
@@ -269,6 +288,14 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             precision (int): Decimal places of the node snap.
             fetch_gisbr (bool): Download the network via GisBR instead.
             bbox, crs, uf: Passed through to ``gisbr_bridge.fetch_road_network``.
+                Without ``clip_buffer_m``, ``bbox`` (in the CRS the network
+                came in) is also the clipping box, transformed to the working
+                CRS.
+            centroids_crs: CRS of ``centroids``. None means the CRS the network
+                came in.
+            clip_buffer_m (float | None): When given with centroids, clip the
+                network to the centroids' bounding box (in the working CRS)
+                expanded by this many metres, instead of ``bbox``.
 
         Returns:
             tuple: ``(graph, arcs, zone_node, unconnected)``. ``graph`` is None
@@ -286,17 +313,59 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                     .format(err), level='critical')
                 return None, [], {}, []
 
-        # CRS of the mesh the arcs actually came from — with the GisBR path the
-        # caller cannot know it in advance, and labelling the output layer with
-        # the wrong CRS would misplace every arc.
-        self.traffic_crs = getattr(road_layer, 'crs', lambda: crs)()
+        # D1: CRS of the mesh the arcs actually came from — with the GisBR path
+        # the caller cannot know it in advance — and the metric CRS everything
+        # is computed (and the output labelled) in.
+        crs_getter = getattr(road_layer, 'crs', None)
+        src_crs = crs_getter() if callable(crs_getter) else None
+        work_crs = src_crs
+        if (src_crs is not None and src_crs.isValid()
+                and hasattr(road_layer, 'extent')):
+            ext = road_layer.extent()
+            picked, _reason = aon.pick_metric_crs(src_crs, (
+                ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()))
+            if picked is not None and picked != src_crs:
+                try:
+                    road_layer = network.reproject_layer(road_layer, picked)
+                except Exception as err:
+                    self._push_message(
+                        self.tr('Could not reproject the highway network to a '
+                                'metric CRS: {}').format(err), level='critical')
+                    return None, [], {}, []
+                work_crs = picked
+                self._push_message(
+                    self.tr('Highway network reprojected from {} to {} for '
+                            'metric computations.').format(
+                                src_crs.authid(), work_crs.authid()),
+                    level='info')
+        self.traffic_crs = work_crs if src_crs is not None else crs
+
+        # D4: centroids in the working CRS, so connectors are measured in metres.
+        centroids = list(centroids or [])
+        cent_crs = centroids_crs if centroids_crs is not None else src_crs
+        if (centroids and work_crs is not None and cent_crs is not None
+                and cent_crs != work_crs):
+            xform = QgsCoordinateTransform(cent_crs, work_crs, QgsProject.instance())
+            centroids = [(p.x(), p.y()) for p in (
+                xform.transform(QgsPointXY(x, y)) for x, y in centroids)]
 
         # D4: clip to the study area before building the graph. A failure here
         # is not fatal — it only means the graph is bigger (and slower) than it
         # had to be, so warn and carry on with the full mesh.
-        if bbox is not None and hasattr(road_layer, 'getFeatures'):
+        if hasattr(road_layer, 'getFeatures') and (
+                bbox is not None or (clip_buffer_m is not None and centroids)):
             try:
-                road_layer = network.clip_and_clean(road_layer, bbox)
+                if clip_buffer_m is not None and centroids:
+                    clip_bbox = self._traffic_bbox(centroids, clip_buffer_m)
+                elif work_crs is not None and work_crs != src_crs:
+                    rect = QgsCoordinateTransform(
+                        src_crs, work_crs, QgsProject.instance()
+                    ).transformBoundingBox(QgsRectangle(*bbox))
+                    clip_bbox = (rect.xMinimum(), rect.yMinimum(),
+                                 rect.xMaximum(), rect.yMaximum())
+                else:
+                    clip_bbox = bbox
+                road_layer = network.clip_and_clean(road_layer, clip_bbox)
             except Exception as err:
                 self._push_message(
                     self.tr('Could not clip the network to the study area ({}); '
@@ -335,7 +404,6 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 level='critical')
             return None, [], {}, []
 
-        centroids = list(centroids or [])
         if not centroids:
             return graph.build_graph(arcs), arcs, {}, []
 
@@ -435,9 +503,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         crs = road_layer.crs() if road_layer is not None else None
 
         bbox = None
+        clip_buffer_m = None
+        cent_layer = self.taCentroidsCombo.currentLayer()
         if from_gisbr:
             centroids = None
-            cent_layer = self.taCentroidsCombo.currentLayer()
             if cent_layer is not None:
                 centroids, _ = self._traffic_centroid_points(
                     cent_layer, self.taZoneIdField.currentField())
@@ -449,6 +518,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                     self.tr('Could not obtain region extent: {}').format(exc),
                     level='critical')
                 return
+            # D4: no centroids reach build_traffic_network here (capacity
+            # adds no connectors), so this falls back to the transformed bbox.
+            if self.taRecorteTipo.currentData() == 'centroides':
+                clip_buffer_m = max_dist_m
 
         progress = self._push_progress(self.tr('Computing HCM capacity…'))
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -461,6 +534,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 bbox=bbox,
                 uf=self.taUf.text().strip() or None,
                 crs=crs,
+                centroids_crs=cent_layer.crs() if cent_layer is not None else None,
+                clip_buffer_m=clip_buffer_m,
             )
             if not arcs:
                 return
@@ -498,6 +573,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 level='critical')
             return
 
+        # D4: the clipping box is built from the centroids only after they are
+        # in the metric working CRS (buffer in real metres). The download bbox
+        # of the 'uf' (None) and regional cases is kept as is.
+        clip_buffer_m = None
         if from_gisbr:
             try:
                 bbox = self._gisbr_bbox(centroids, max_dist_m)
@@ -506,8 +585,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                     self.tr('Could not obtain region extent: {}').format(exc),
                     level='critical')
                 return
+            if self.taRecorteTipo.currentData() == 'centroides':
+                clip_buffer_m = max_dist_m
         else:
-            bbox = self._traffic_bbox(centroids, max_dist_m)
+            bbox = None
+            clip_buffer_m = max_dist_m
 
         progress = self._push_progress(
             self.tr('Assigning traffic ({})…').format(method.upper()))
@@ -524,6 +606,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 bbox=bbox,
                 uf=self.taUf.text().strip() or None,
                 crs=crs,
+                centroids_crs=cent_layer.crs(),
+                clip_buffer_m=clip_buffer_m,
             )
             if g is None or not zone_node:
                 return

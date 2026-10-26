@@ -338,6 +338,101 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.assertEqual(self.dialog.last_message[0], 'critical')
             self.assertIn('Falha ao obter recorte', self.dialog.last_message[1])
 
+    # --- D1/D4: metric working CRS ------------------------------------------
+
+    # Sioux Falls area (UTM zone 14N): an L of two links and a centroid near
+    # each end, all in EPSG:4326.
+    GEO_LINES = [
+        [(-96.770, 43.610), (-96.760, 43.610)],
+        [(-96.760, 43.610), (-96.760, 43.620)],
+    ]
+    GEO_CENTROIDS = [(-96.7701, 43.6101), (-96.7601, 43.6199)]
+
+    @staticmethod
+    def _line_layer(authid, lines):
+        """Memory LineString layer in ``authid`` with one feature per line."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        layer = QgsVectorLayer('LineString?crs={}'.format(authid), 'roads', 'memory')
+        feats = []
+        for line in lines:
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromPolylineXY(
+                [QgsPointXY(x, y) for x, y in line]))
+            feats.append(feat)
+        layer.dataProvider().addFeatures(feats)
+        layer.updateExtents()
+        return layer
+
+    @staticmethod
+    def _to_crs(points, src, dst):
+        from qgis.core import (QgsCoordinateReferenceSystem,
+                               QgsCoordinateTransform, QgsPointXY, QgsProject)
+        xform = QgsCoordinateTransform(QgsCoordinateReferenceSystem(src),
+                                       QgsCoordinateReferenceSystem(dst),
+                                       QgsProject.instance())
+        return [(p.x(), p.y()) for p in
+                (xform.transform(QgsPointXY(x, y)) for x, y in points)]
+
+    def test_geographic_layer_is_reprojected_to_utm(self):
+        """A 4326 layer and 4326 centroids end up in UTM 14N, in metres (D1, D4)."""
+        from qgis.core import QgsCoordinateReferenceSystem
+        from test.sioux_falls import init_processing
+        init_processing()
+        layer = self._line_layer('EPSG:4326', self.GEO_LINES)
+        with patch.object(network, 'reproject_layer',
+                          wraps=network.reproject_layer) as spy:
+            g, _arcs, zone_node, unconnected = self.dialog.build_traffic_network(
+                road_layer=layer, centroids=self.GEO_CENTROIDS, zone_keys=[1, 2],
+                max_dist_m=50.0,
+                centroids_crs=QgsCoordinateReferenceSystem('EPSG:4326'))
+        spy.assert_called_once()
+        self.assertEqual(self.dialog.traffic_crs.authid(), 'EPSG:32614')
+        self.assertIsNotNone(g)
+        self.assertEqual(unconnected, [])
+        expected = self._to_crs(
+            [self.GEO_LINES[0][0], self.GEO_LINES[1][1]], 'EPSG:4326', 'EPSG:32614')
+        for key, (ex, ey) in zip((1, 2), expected):
+            x, y = zone_node[key]
+            self.assertGreater(abs(x), 1000.0)      # metres, not degrees
+            self.assertAlmostEqual(x, ex, delta=1.0)
+            self.assertAlmostEqual(y, ey, delta=1.0)
+
+    def test_metric_layer_is_not_reprojected(self):
+        """A layer already in a projected CRS is used as is (D1)."""
+        layer = self._line_layer('EPSG:32614', [
+            [(700000.0, 4830000.0), (700100.0, 4830000.0)],
+            [(700100.0, 4830000.0), (700100.0, 4830100.0)],
+        ])
+        with patch.object(network, 'reproject_layer') as mock_reproject:
+            g, _arcs, zone_node, _unc = self.dialog.build_traffic_network(
+                road_layer=layer, centroids=[(700000.0, 4830001.0)],
+                max_dist_m=50.0)
+        mock_reproject.assert_not_called()
+        self.assertIsNotNone(g)
+        self.assertEqual(self.dialog.traffic_crs.authid(), 'EPSG:32614')
+        self.assertEqual(zone_node, {0: (700000.0, 4830000.0)})
+
+    def test_clip_buffer_uses_centroids_in_work_crs(self):
+        """With clip_buffer_m, clip_and_clean gets a bbox in the working CRS (D4)."""
+        from qgis.core import QgsCoordinateReferenceSystem
+        from test.sioux_falls import init_processing
+        init_processing()
+        layer = self._line_layer('EPSG:4326', self.GEO_LINES)
+        with patch.object(network, 'clip_and_clean',
+                          side_effect=lambda lyr, bbox: lyr) as mock_clip:
+            self.dialog.build_traffic_network(
+                road_layer=layer, centroids=self.GEO_CENTROIDS,
+                max_dist_m=50.0, clip_buffer_m=100.0,
+                centroids_crs=QgsCoordinateReferenceSystem('EPSG:4326'))
+        mock_clip.assert_called_once()
+        clipped_layer, bbox = mock_clip.call_args[0]
+        self.assertEqual(clipped_layer.crs().authid(), 'EPSG:32614')
+        pts = self._to_crs(self.GEO_CENTROIDS, 'EPSG:4326', 'EPSG:32614')
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        for got, want in zip(bbox, (min(xs) - 100.0, min(ys) - 100.0,
+                                    max(xs) + 100.0, max(ys) + 100.0)):
+            self.assertAlmostEqual(got, want, delta=0.01)
+
 
 
 if __name__ == "__main__":
