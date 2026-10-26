@@ -41,7 +41,7 @@ class Graph(object):
         Args:
             arcs (iterable): Arcos direcionados (`network.Arc` ou objetos com
                 `arc_id`, `from_node`, `to_node` e `t0`), incluindo os
-                conectores de centróide de `network.connect_centroids`.
+                conectores de centróide de `network.anchor_centroids`.
 
         Raises:
             ValueError: se dois arcos compartilharem o mesmo `arc_id`.
@@ -66,7 +66,9 @@ class Graph(object):
 
     @property
     def nodes(self):
-        """list: Nós do grafo (tuplas (x, y) arredondadas à tolerância de snap)."""
+        """list: Nós do grafo — tuplas (x, y) arredondadas à tolerância de
+        snap, além dos nós virtuais de centróide
+        (`(network.CONNECTOR_LINK_ID, zona)`)."""
         return list(self.adjacency.keys())
 
     def has_node(self, node):
@@ -275,8 +277,9 @@ def build_graph(arcs):
     """Constrói o grafo de roteamento a partir dos arcos direcionados.
 
     Args:
-        arcs (iterable): Arcos de `network.build_network`, somados aos
-            conectores de `network.connect_centroids`.
+        arcs (iterable): Arcos de `network.anchor_centroids`: a malha de
+            `network.build_network` (com os links divididos nas âncoras
+            substituídos pelos pedaços) somada aos conectores de centróide.
 
     Returns:
         Graph: Grafo pronto para o AoN e para as iterações do MSA.

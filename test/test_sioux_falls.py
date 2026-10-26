@@ -202,7 +202,7 @@ class TestSiouxFallsFixture(unittest.TestCase):
 
         return out_layer, stats, panel, zone_node
 
-    def _assert_d6_layer(self, out_layer, stats, panel, zone_node):
+    def _assert_d6_layer(self, out_layer, stats, panel, anchors):
         """Verifica as asserções (a)–(e) do D6 e a integridade da rede sobre a camada."""
         crs_src = QgsCoordinateReferenceSystem('EPSG:4326')
         crs_dst = panel.traffic_crs
@@ -264,7 +264,7 @@ class TestSiouxFallsFixture(unittest.TestCase):
             matched_z = None
             for z in zone_keys:
                 c_pt = nodes_work[z]
-                zn_pt = zone_node[z]
+                zn_pt = anchors[z]
                 fw_match = (math.hypot(p0[0] - c_pt[0], p0[1] - c_pt[1]) <= 1.0 and
                             math.hypot(p1[0] - zn_pt[0], p1[1] - zn_pt[1]) <= 1.0)
                 bw_match = (math.hypot(p0[0] - zn_pt[0], p0[1] - zn_pt[1]) <= 1.0 and
@@ -321,11 +321,12 @@ class TestSiouxFallsFixture(unittest.TestCase):
 
     def test_end_to_end_aon(self):
         """Regressão ponta a ponta Sioux Falls com AoN (D6)."""
-        out_layer, stats, panel, zone_node = self._run_sioux_falls_assignment('aon')
-        self._assert_d6_layer(out_layer, stats, panel, zone_node)
+        out_layer, stats, panel, _zone_node = self._run_sioux_falls_assignment('aon')
+        self._assert_d6_layer(out_layer, stats, panel, panel.traffic_anchors)
 
     def test_end_to_end_msa(self):
         """Regressão ponta a ponta Sioux Falls com MSA max_iter=20 (D6)."""
-        out_layer, stats, panel, zone_node = self._run_sioux_falls_assignment('msa', max_iter=20)
-        self._assert_d6_layer(out_layer, stats, panel, zone_node)
+        out_layer, stats, panel, _zone_node = self._run_sioux_falls_assignment(
+            'msa', max_iter=20)
+        self._assert_d6_layer(out_layer, stats, panel, panel.traffic_anchors)
 

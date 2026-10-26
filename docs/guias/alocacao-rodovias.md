@@ -72,11 +72,12 @@ O grupo *Alocação* ("Assignment") pede a matriz e os centroides:
 | *Demanda (veíc/h)* ("Demand (veh/h)") | Coluna numérica de demanda — aqui a unidade importa: a capacidade HCM é em **veículos por hora por sentido** |
 | *Centroides* ("Centroids") | Camada de centroides |
 | *ID de Tráfego* ("Traffic id") | Campo dos centroides com o mesmo id usado em Origem/Destino |
-| *Conector máximo (m)* ("Max connector (m)") | Distância máxima aceita entre um centroide e o nó mais próximo da malha (padrão 5000 m) |
+| *Conector máximo (m)* ("Max connector (m)") | Distância máxima aceita entre um centroide e a malha rodoviária (`max_dist_m`, padrão 5000 m) |
 
-Cada centroide é ligado à malha por um **conector** de ida e volta, com
+Cada centroide é ligado à malha por um **conector** de ida e volta (estilizado como conector tracejado cinza), com
 capacidade alta e custo desprezível — ele existe só para injetar a demanda na
-rede, não representa via nenhuma. Centroide cujo nó mais próximo está além do
+rede, não representa via nenhuma. A âncora é o ponto mais próximo **do link** (o link é
+dividido ali). Centroide cuja distância à malha está além do
 *Conector máximo (m)* fica **fora** da alocação, e o plugin diz quantos.
 
 #### Método: AoN ou Equilíbrio MSA + BPR
@@ -146,6 +147,7 @@ A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*
 | Campo | Significado |
 |---|---|
 | `arc_id` / `link_id` / `sentido` | Identificação do arco dirigido e do link de origem (`fw`/`bw`) |
+| `tipo` | Classificação do arco: `link` (original intacto), `link_dividido` (dividido para ancorar centróide) ou `conector` |
 | `faixas`, `comp_m`, `vel_livre` | Faixas por sentido, comprimento em metros, velocidade de fluxo livre |
 | `capacidade` | Capacidade HCM, em veíc/h **por sentido** |
 | `volume` | Volume alocado no arco |

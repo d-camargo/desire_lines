@@ -51,9 +51,12 @@ def aon_load(graph, custos=None, od_pairs=None, zone_node=None):
             - tuplas `(o_zone, d_zone, flow)`
             - tuplas `((o_zone, d_zone), flow)`
             - dict `{(o_zone, d_zone): flow}`
-        zone_node (dict | callable | None): Mapeamento `zone_id -> node_key (x, y)`
-            de `network.connect_centroids`. Se None ou se a zona não constar no
-            dicionário/mapeamento, assume que `o_zone` e `d_zone` já são as tuplas `(x, y)`.
+        zone_node (dict | callable | None): Mapeamento `zone_id -> nó` de
+            `network.anchor_centroids` — o nó virtual
+            `(network.CONNECTOR_LINK_ID, zone_id)`, de onde o Dijkstra parte
+            pelo conector. Se None ou se a zona não constar no
+            dicionário/mapeamento, assume que `o_zone` e `d_zone` já são nós
+            do grafo.
 
     Returns:
         tuple: (flows, stats)

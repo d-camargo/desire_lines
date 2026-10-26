@@ -125,14 +125,19 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.assertTrue(self.dialog.taNetFromLayer.isChecked())
 
     def test_build_traffic_network_builds_graph(self):
-        """The graph gets one arc pair per link plus one per centroid (step 18)."""
+        """The graph gets one arc pair per link/anchor piece plus one per centroid (step 18)."""
         g, arcs, zone_node, unconnected = self.dialog.build_traffic_network(
             road_layer=ROADS, centroids=CENTROIDS, max_dist_m=50.0)
-        self.assertEqual(len(g.arcs), 8)   # 4 directed road arcs + 4 connectors
-        self.assertEqual(len(arcs), 8)
+        # 6 directed road arcs (L2 is split at the anchor of centroid 1)
+        # + 4 connectors
+        self.assertEqual(len(g.arcs), 10)
+        self.assertEqual(len(arcs), 10)
         self.assertEqual(len(zone_node), 2)
         self.assertEqual(unconnected, [])
         for node in ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0)):
+            self.assertTrue(g.has_node(node), node)
+        # zones route from their virtual nodes (D2)
+        for node in zone_node.values():
             self.assertTrue(g.has_node(node), node)
 
     def test_zone_keys_label_the_zone_node_map(self):
@@ -389,10 +394,12 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(self.dialog.traffic_crs.authid(), 'EPSG:32614')
         self.assertIsNotNone(g)
         self.assertEqual(unconnected, [])
+        # Anchors are the orthogonal projections on the links: zone 1 clamps
+        # to the L corner, zone 2 falls on L2 short of its top node (D1).
         expected = self._to_crs(
-            [self.GEO_LINES[0][0], self.GEO_LINES[1][1]], 'EPSG:4326', 'EPSG:32614')
+            [(-96.770, 43.610), (-96.760, 43.6199)], 'EPSG:4326', 'EPSG:32614')
         for key, (ex, ey) in zip((1, 2), expected):
-            x, y = zone_node[key]
+            x, y = self.dialog.traffic_anchors[key]
             self.assertGreater(abs(x), 1000.0)      # metres, not degrees
             self.assertAlmostEqual(x, ex, delta=1.0)
             self.assertAlmostEqual(y, ey, delta=1.0)
@@ -410,7 +417,9 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         mock_reproject.assert_not_called()
         self.assertIsNotNone(g)
         self.assertEqual(self.dialog.traffic_crs.authid(), 'EPSG:32614')
-        self.assertEqual(zone_node, {0: (700000.0, 4830000.0)})
+        # The centroid projects exactly onto the link start: end anchor, no split
+        self.assertEqual(self.dialog.traffic_anchors,
+                         {0: (700000.0, 4830000.0)})
 
     def test_clip_buffer_uses_centroids_in_work_crs(self):
         """With clip_buffer_m, clip_and_clean gets a bbox in the working CRS (D4)."""
@@ -433,6 +442,170 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
                                     max(xs) + 100.0, max(ys) + 100.0)):
             self.assertAlmostEqual(got, want, delta=0.01)
 
+    # --- D3: centroid anchor warnings in panel -------------------------------
+
+    def test_d3_message_unconnected_centroids(self):
+        """Centroids out of reach produce a warning with max distance and zone ids (D3)."""
+        roads = [{'id': 1, 'geometry': [(0.0, 0.0), (100.0, 0.0)]}]
+        centroids = [(50.0, 5.0), (500.0, 500.0)]
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            _g, _arcs, zone_node, unconnected = self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=['Z_OK', 'Z_LOST'], max_dist_m=50.0)
+
+        self.assertEqual(unconnected, ['Z_LOST'])
+        self.assertEqual(list(zone_node), ['Z_OK'])
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        expected_msg = (
+            '1 centroid(s) not connected to the highway network '
+            '(nothing within 50 m): zones Z_LOST.'
+        )
+        self.assertIn(expected_msg, self.dialog.last_message[1])
+        mock_push.assert_called_with(expected_msg)
+
+    def test_d3_message_far_connectors(self):
+        """Connectors longer than CONNECTOR_WARN_M produce a warning listing the zones (D3)."""
+        roads = [{'id': 'L1', 'geometry': [(0.0, 0.0), (10000.0, 0.0)]}]
+        centroids = [(5000.0, 1500.0)]
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            _g, _arcs, _zn, _unc = self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=['Z_FAR'], max_dist_m=5000.0)
+
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        expected_msg = (
+            '1 connector(s) longer than 1000 m: zones Z_FAR. '
+            'Check the centroids or the network clip.'
+        )
+        self.assertIn(expected_msg, self.dialog.last_message[1])
+        mock_push.assert_called_with(expected_msg)
+
+    def test_d3_message_shared_node(self):
+        """Zones anchored to the same node produce a warning (D3)."""
+        roads = [{'id': 1, 'geometry': [(0.0, 0.0), (100.0, 0.0)]}]
+        centroids = [(-10.0, 0.0), (-20.0, 0.0)]
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            _g, _arcs, _zn, _unc = self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=['ZA', 'ZB'], max_dist_m=50.0)
+
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        expected_msg = (
+            'Zones ZA, ZB are anchored to the same network node; '
+            'trips between them use only the connectors.'
+        )
+        self.assertIn(expected_msg, self.dialog.last_message[1])
+        mock_push.assert_called_with(expected_msg)
+
+    def test_d3_message_shared_link(self):
+        """Zones anchored at distinct points of the same link produce an info message (D3)."""
+        roads = [{'id': 'BR-101', 'geometry': [(0.0, 0.0), (1000.0, 0.0)]}]
+        centroids = [(200.0, 10.0), (800.0, 10.0)]
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            _g, _arcs, _zn, _unc = self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=['Z_WEST', 'Z_EAST'], max_dist_m=50.0)
+
+        self.assertEqual(self.dialog.last_message[0], 'info')
+        expected_msg = 'Zones Z_WEST, Z_EAST are anchored to the same highway link (BR-101).'
+        self.assertIn(expected_msg, self.dialog.last_message[1])
+        mock_push.assert_called_with(expected_msg, level='info')
+
+    def test_d3_message_fallback_ambiguous(self):
+        """Ambiguous link projection falls back to the nearest node and warns (D3)."""
+        roads = [
+            {'id': 1, 'geometry': [(0.0, 0.0), (1000.0, 0.0)]},
+            {'id': 2, 'geometry': [(500.0, 100.0), (1000.0, 100.0)]},
+        ]
+        centroids = [(600.0, 50.0)]
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            _g, _arcs, _zn, _unc = self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=['Z_AMBIG'], max_dist_m=5000.0)
+
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        expected_msg = (
+            '1 centroid(s) anchored to the nearest node because '
+            'the nearest link was ambiguous: zones Z_AMBIG.'
+        )
+        self.assertIn(expected_msg, self.dialog.last_message[1])
+        mock_push.assert_called_with(expected_msg)
+
+    def test_d3_message_zone_ids_truncated_with_ellipsis(self):
+        """More than 10 zone ids are truncated with '…' (D3)."""
+        roads = [{'id': 1, 'geometry': [(0.0, 0.0), (100.0, 0.0)]}]
+        centroids = [(-float(i), 0.0) for i in range(1, 13)]
+        keys = [f'Z{i}' for i in range(1, 13)]
+        self.dialog.build_traffic_network(
+            road_layer=roads, centroids=centroids,
+            zone_keys=keys, max_dist_m=50.0)
+
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        self.assertIn('Z1, Z2, Z3, Z4, Z5, Z6, Z7, Z8, Z9, Z10, …',
+                      self.dialog.last_message[1])
+        self.assertNotIn('Z11', self.dialog.last_message[1])
+
+    def test_d3_message_shared_node_max_five_groups(self):
+        """Shared node warnings are capped at 5 groups (D3)."""
+        roads = [
+            {'id': i, 'geometry': [(float(i * 1000), 0.0), (float(i * 1000 + 100), 0.0)]}
+            for i in range(6)
+        ]
+        centroids = []
+        for i in range(6):
+            x = float(i * 1000)
+            centroids.extend([(x - 5.0, 0.0), (x - 10.0, 0.0)])
+        keys = [f'Z{k}' for k in range(12)]
+
+        with patch.object(self.dialog, '_push_message',
+                          wraps=self.dialog._push_message) as mock_push:
+            self.dialog.build_traffic_network(
+                road_layer=roads, centroids=centroids,
+                zone_keys=keys, max_dist_m=50.0)
+
+        shared_node_calls = [
+            call for call in mock_push.call_args_list
+            if 'same network node' in call[0][0]
+        ]
+        self.assertEqual(len(shared_node_calls), 5)
+
+    def test_d8_coords_crs_mismatch_blocks_build_network(self):
+        """Malha lon/lat rotulada EPSG:31983 emite critical e bloqueia processamento (D8)."""
+        layer = self._line_layer('EPSG:31983', self.GEO_LINES)
+        with patch.object(network, 'reproject_layer') as mock_reproject, \
+             patch.object(network, 'clip_and_clean') as mock_clip:
+            ret = self.dialog.build_traffic_network(
+                road_layer=layer,
+                centroids=self.GEO_CENTROIDS,
+            )
+
+        self.assertEqual(ret, (None, [], {}, []))
+        mock_reproject.assert_not_called()
+        mock_clip.assert_not_called()
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('EPSG:31983', self.dialog.last_message[1])
+
+    def test_d8_coords_crs_mismatch_valid_4326_has_no_critical(self):
+        """Malha 4326 com coordenadas lon/lat válidas não emite mensagem critical (D8)."""
+        from qgis.core import QgsCoordinateReferenceSystem
+        from test.sioux_falls import init_processing
+        init_processing()
+        self.dialog.last_message = None
+        layer = self._line_layer('EPSG:4326', self.GEO_LINES)
+        ret = self.dialog.build_traffic_network(
+            road_layer=layer,
+            centroids=self.GEO_CENTROIDS,
+            centroids_crs=QgsCoordinateReferenceSystem('EPSG:4326'),
+            max_dist_m=50.0,
+        )
+        self.assertNotEqual(ret, (None, [], {}, []))
+        if self.dialog.last_message is not None:
+            self.assertNotEqual(self.dialog.last_message[0], 'critical')
 
 
 if __name__ == "__main__":

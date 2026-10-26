@@ -9,6 +9,8 @@ __pycache__/
 # o QGIS le ele em runtime e o zip do repositorio precisa dele.
 !i18n/*.qm
 *.zip
+# Banco de estilo que o QGIS/QgsApplication pode criar no cwd em runs de teste.
+symbology-style.db
 
 # Local test data and output
 test/*.gpkg

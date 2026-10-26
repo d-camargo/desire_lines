@@ -7,14 +7,14 @@ from qgis.core import (
     QgsGeometry,
     QgsPointXY,
     QgsField,
-    QgsGraduatedSymbolRenderer,
-    QgsRendererRange,
+    QgsRuleBasedRenderer,
     QgsLineSymbol,
 )
 
 from .hcm import level_of_service
 from .assignment import bpr_time
 from .params import PARAMS
+from .network import CONNECTOR_LINK_ID
 
 
 def _create_field(name, field_type):
@@ -111,6 +111,7 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
     fields = [
         _create_field('arc_id', 'string'),
         _create_field('link_id', 'string'),
+        _create_field('tipo', 'string'),
         _create_field('sentido', 'string'),
         _create_field('faixas', 'int'),
         _create_field('comp_m', 'double'),
@@ -162,6 +163,13 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
 
             atraso_h = max(0.0, tempo_h - t0_h)
 
+            if getattr(arc, 'scope', None) == CONNECTOR_LINK_ID:
+                tipo = 'conector'
+            elif isinstance(getattr(arc, 'arc_id', None), (tuple, list)) and len(arc.arc_id) == 3:
+                tipo = 'link_dividido'
+            else:
+                tipo = 'link'
+
             sentido = 'fw' if getattr(arc, 'forward', True) else 'bw'
             if isinstance(arc.arc_id, tuple) and len(arc.arc_id) >= 2:
                 sentido = str(arc.arc_id[1])
@@ -180,6 +188,7 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
             attr_vals = [
                 str(arc.arc_id),
                 str(arc.link_id),
+                tipo,
                 sentido,
                 int(lanes),
                 float(arc.length),
@@ -218,7 +227,10 @@ VC_CLASSES = [
 
 
 def apply_vc_style(layer):
-    """Aplica o estilo de simbologia graduada por v/c com classes fixas de A a F.
+    """Aplica o estilo de simbologia baseado em regras (QgsRuleBasedRenderer).
+
+    Aplica estilo específico para conectores (linha tracejada cinza) e classes
+    de v/c de A a F para os demais links (D4).
 
     Args:
         layer (QgsVectorLayer): Camada vetorial de saída da alocação.
@@ -226,16 +238,37 @@ def apply_vc_style(layer):
     if not layer or not layer.isValid():
         return
 
-    ranges = []
-    for min_val, max_val, label, color_hex, width in VC_CLASSES:
+    root_rule = QgsRuleBasedRenderer.Rule(None)
+
+    # Regra do conector (D4): cinza #808080, tracejada, largura 0.3
+    conn_symbol = QgsLineSymbol.createSimple({
+        'color': '#808080',
+        'width': '0.3',
+        'line_style': 'dash',
+    })
+    conn_rule = QgsRuleBasedRenderer.Rule(
+        conn_symbol,
+        filterExp="\"tipo\" = 'conector'",
+        label='Connector',
+    )
+    root_rule.appendChild(conn_rule)
+
+    # Regras das classes A-F de v/c (D4): excluem conector
+    for idx, (min_val, max_val, label, color_hex, width) in enumerate(VC_CLASSES):
+        op = '<=' if idx == len(VC_CLASSES) - 1 else '<'
+        filter_exp = f'"tipo" <> \'conector\' AND "vc" >= {min_val} AND "vc" {op} {max_val}'
         symbol = QgsLineSymbol.createSimple({
             'color': color_hex,
             'width': str(width),
         })
-        rng = QgsRendererRange(min_val, max_val, symbol, label)
-        ranges.append(rng)
+        rule = QgsRuleBasedRenderer.Rule(
+            symbol,
+            filterExp=filter_exp,
+            label=label,
+        )
+        root_rule.appendChild(rule)
 
-    renderer = QgsGraduatedSymbolRenderer('vc', ranges)
+    renderer = QgsRuleBasedRenderer(root_rule)
     layer.setRenderer(renderer)
     layer.triggerRepaint()
 

@@ -12,6 +12,18 @@ CONNECTOR_LINK_ID = 'conector'
 CONNECTOR_CAPACITY_VPH = 99999.0
 CONNECTOR_FFS_KMH = 200.0
 
+# Ancoragem de centróides por projeção no link mais próximo (D1/D2, 0.6.2):
+# a menos de ANCHOR_END_TOL_M de uma ponta, dividir o link só criaria um
+# pedaço degenerado — ancora no nó da ponta; projeções em links distintos
+# mais próximas que ANCHOR_AMBIGUITY_M uma da outra são a mesma junção (não
+# ambiguidade), e links quase equidistantes com projeções distantes entre si
+# são ambíguos — caem para o nó mais próximo; conector mais longo que
+# CONNECTOR_WARN_M é motivo de aviso no painel (D3).
+ANCHOR_END_TOL_M = 0.5
+ANCHOR_AMBIGUITY_M = 0.5
+CONNECTOR_WARN_M = 1000.0
+DEGREES_SUSPECT_SPAN = 10.0
+
 
 class Arc(object):
     """Representa um arco direcionado na malha rodoviária.
@@ -304,6 +316,55 @@ def build_network(features, overrides=None, precision=3, id_field=None):
     return arcs
 
 
+def coords_crs_mismatch(extent, is_geographic):
+    """Verifica se as coordenadas do extent são incompatíveis com o tipo de CRS (D8).
+
+    Args:
+        extent: Tupla/lista (xmin, ymin, xmax, ymax) ou objeto com
+            xMinimum/yMinimum/xMaximum/yMaximum.
+        is_geographic (bool): True se o CRS é geográfico (graus), False se projetado (metros).
+
+    Returns:
+        str | None:
+            - 'out_of_geographic_range' se CRS for geográfico mas coordenadas
+              estiverem fora de [-180, 180] x [-90, 90].
+            - 'degrees_in_projected' se CRS for projetado mas coordenadas
+              estiverem dentro de [-180, 180] x [-90, 90] com dimensão máxima
+              positiva e menor que DEGREES_SUSPECT_SPAN.
+            - None se não houver inconsistência detectada ou se o extent for degenerado.
+    """
+    if extent is None:
+        return None
+    if hasattr(extent, 'isNull') and callable(extent.isNull) and extent.isNull():
+        return None
+    if hasattr(extent, 'xMinimum'):
+        x1 = extent.xMinimum()
+        y1 = extent.yMinimum()
+        x2 = extent.xMaximum()
+        y2 = extent.yMaximum()
+    else:
+        try:
+            x1, y1, x2, y2 = extent[:4]
+        except (TypeError, ValueError):
+            return None
+
+    xmin, xmax = (x1, x2) if x1 <= x2 else (x2, x1)
+    ymin, ymax = (y1, y2) if y1 <= y2 else (y2, y1)
+
+    if is_geographic:
+        if xmin < -180.0 or xmax > 180.0 or ymin < -90.0 or ymax > 90.0:
+            return 'out_of_geographic_range'
+        return None
+
+    in_geographic = (-180.0 <= xmin <= 180.0 and -180.0 <= xmax <= 180.0 and
+                     -90.0 <= ymin <= 90.0 and -90.0 <= ymax <= 90.0)
+    span = max(xmax - xmin, ymax - ymin)
+    if in_geographic and 0.0 < span < DEGREES_SUSPECT_SPAN:
+        return 'degrees_in_projected'
+
+    return None
+
+
 def _run_processing_alg(alg_id, params):
     """Executa um algoritmo do Processing do QGIS (`qgis.processing.run`).
 
@@ -401,96 +462,403 @@ def clip_and_clean(road_layer, bbox, buffer_m=0.0, snap_tol_m=0.01):
     return single
 
 
-def connect_centroids(arcs, centroids, max_dist_m):
-    """Cria arcos-conectores entre centróides de zona e o nó mais próximo da malha.
+def _dist(a, b):
+    """Distância euclidiana entre dois pontos (x, y)."""
+    return math.hypot(a[0] - b[0], a[1] - b[1])
 
-    Cada centróide conectado ganha um par de arcos (ida e volta, como em D5)
-    até o nó existente mais próximo, com `link_id='conector'`, capacidade alta
-    e custo desprezível (`CONNECTOR_CAPACITY_VPH`/`CONNECTOR_FFS_KMH`), para
-    servir de rampa de acesso à malha sem influenciar a alocação. O nó do
-    centróide usa um identificador virtual `(CONNECTOR_LINK_ID, zone_id)` em
-    `from_node`/`to_node` (D5) para evitar que centróides coincidentes criem
-    atalhos espúrios entre nós da malha. A `geometry` continua com as
-    coordenadas reais `[(cx, cy), nearest]`. Centróides sem nó a até
-    `max_dist_m` não são conectados — o motivo é reportado, sem lançar exceção,
-    para que a alocação siga normalmente para os pares OD que alcançam a malha.
+
+def _point_rect_distance(pt, bbox):
+    """Distância mínima entre um ponto (x, y) e um retângulo (xmin, ymin, xmax, ymax)."""
+    xmin, ymin, xmax, ymax = bbox
+    dx = max(xmin - pt[0], 0.0, pt[0] - xmax)
+    dy = max(ymin - pt[1], 0.0, pt[1] - ymax)
+    return math.hypot(dx, dy)
+
+
+def _project_point_on_polyline(pt, points):
+    """Projeção ortogonal de um ponto sobre o segmento mais próximo da polyline.
 
     Args:
-        arcs (list): Arcos já construídos (ex.: `build_network`); seus nós
-            (`from_node`/`to_node`) formam o conjunto de destinos possíveis.
-        centroids (list): Lista de centróides — tuplas/listas (x, y) ou
-            objetos com métodos/atributos `x`/`y` (ex.: `QgsPointXY`). O
-            índice na lista é o id da zona (mesma convenção de `od_pairs` em
-            `aon.allocate_aon`).
-        max_dist_m (float): Distância máxima, em metros, para aceitar a conexão.
+        pt (tuple): Ponto (x, y).
+        points (list): Vértices (x, y) da polyline.
 
     Returns:
-        tuple: (connector_arcs, zone_node, unconnected)
-            connector_arcs (list): Arcos conectores (ida e volta) por centróide conectado.
-            zone_node (dict): {zone_id: node} para os centróides conectados.
-            unconnected (list): ids de zona sem conector (fora de `max_dist_m`
-                ou malha vazia).
+        tuple | None: (distancia, s ao longo da polyline, ponto_projetado), ou
+        None se a polyline não tiver segmento de comprimento > 0.
     """
+    best = None
+    s_accum = 0.0
+    for (x1, y1), (x2, y2) in zip(points[:-1], points[1:]):
+        seg_dx = x2 - x1
+        seg_dy = y2 - y1
+        seg_len = math.hypot(seg_dx, seg_dy)
+        if seg_len <= 0.0:
+            continue
+        t = ((pt[0] - x1) * seg_dx + (pt[1] - y1) * seg_dy) / (seg_len * seg_len)
+        t = max(0.0, min(1.0, t))
+        qx = x1 + t * seg_dx
+        qy = y1 + t * seg_dy
+        d = math.hypot(pt[0] - qx, pt[1] - qy)
+        if best is None or d < best[0]:
+            best = (d, s_accum + t * seg_len, (qx, qy))
+        s_accum += seg_len
+    return best
+
+
+def _split_polyline(points, splits):
+    """Divide a polyline nos pontos de corte ``(s, nó)``, já ordenados por ``s``.
+
+    O nó de corte entra como vértice de ponta dos dois pedaços vizinhos, para
+    que as geometrias dos pedaços compartilhem o nó de âncora.
+
+    Args:
+        points (list): Vértices (x, y) da polyline.
+        splits (list): Pares (s, nó) em ordem crescente de s.
+
+    Returns:
+        list: Polylines dos pedaços, do começo ao fim.
+    """
+    pieces = []
+    current = [points[0]]
+    s_accum = 0.0
+    next_split = 0
+    for (x1, y1), (x2, y2) in zip(points[:-1], points[1:]):
+        seg_len = math.hypot(x2 - x1, y2 - y1)
+        while (next_split < len(splits)
+               and splits[next_split][0] <= s_accum + seg_len + 1e-9):
+            _s_target, node = splits[next_split]
+            if _dist(node, current[-1]) > 1e-9:
+                current.append(node)
+            if len(current) >= 2:
+                pieces.append(current)
+            current = [node]
+            next_split += 1
+        if _dist((x2, y2), current[-1]) > 1e-9:
+            current.append((x2, y2))
+        s_accum += seg_len
+    if len(current) >= 2:
+        pieces.append(current)
+    if not pieces:
+        pieces.append(list(points))
+    return pieces
+
+
+def _build_piece_arcs(link_id, entry, splits, precision):
+    """Constrói os pares de arcos dos pedaços de um link dividido (D1).
+
+    Cada pedaço ``k`` (na ordem do sentido direto) vira par fw/bw com
+    ``arc_id=(link_id, sentido, k)``, mesmo ``link_id``, capacidade/escopo/
+    parâmetros do arco original e ``t0`` proporcional ao comprimento do pedaço.
+
+    Args:
+        link_id (any): Identificador do link dividido.
+        entry (dict): Entrada do link em `anchor_centroids` ('fw'/'bw'/'points'/'length').
+        splits (list): Pares (s, nó) de corte, em ordem crescente de s.
+        precision (int): Casas decimais do snap de nós.
+
+    Returns:
+        list: Arcos dos pedaços (fw_k, bw_k, fw_{k+1}, ...).
+    """
+    pieces = _split_polyline(entry['points'], splits)
+    total = entry['length']
+    arcs_out = []
+    for k, piece in enumerate(pieces):
+        length = calculate_length_m(piece)
+        frac = (length / total) if total > 0.0 else 0.0
+        for direction in ('fw', 'bw'):
+            orig = entry[direction]
+            if orig is None:
+                continue
+            pts = piece if direction == 'fw' else list(reversed(piece))
+            arcs_out.append(Arc(
+                arc_id=(link_id, direction, k),
+                link_id=link_id,
+                from_node=node_key(pts[0], precision),
+                to_node=node_key(pts[-1], precision),
+                length=length,
+                t0=orig.t0 * frac,
+                capacity=orig.capacity,
+                scope=orig.scope,
+                params=orig.params,
+                sources=orig.sources,
+                geometry=pts,
+                forward=(direction == 'fw'),
+            ))
+    return arcs_out
+
+
+def anchor_centroids(arcs, centroids, max_dist_m, precision=3):
+    """Ancora cada centróide no ponto mais próximo do link mais próximo (D1, D2).
+
+    Substitui `connect_centroids`: em vez de ligar o centróide ao **nó**
+    existente mais próximo (que, em trecho com nós próximos, o prende à via
+    errada e desenha uma ligação que não existe), projeta-o ortogonalmente
+    sobre a polyline do link mais próximo e, quando o pé da projeção cai no
+    meio do link, **divide o link nesse ponto** — a âncora vira um nó real do
+    grafo, as duas metades roteiam por ela e o conector passa a carregar as
+    viagens da zona. Cada zona ancorada ganha um par de conectores (ida e
+    volta) entre o nó virtual `(CONNECTOR_LINK_ID, zone_id)` e o nó de âncora:
+    o Dijkstra parte do nó virtual pelo conector (D2) e dois centróides na
+    mesma âncora deixam de ser par ``o == d`` ignorado em silêncio.
+
+    Casos extremos, sempre reportados em ``report`` (nunca exceção):
+
+    - sem link candidato ou distância maior que ``max_dist_m``:
+      ``report['unconnected']`` com a menor distância encontrada (ou ``None``);
+    - link mais próximo ambíguo (outro link quase equidistante cuja projeção
+      fica longe da primeira): ancora no nó existente mais próximo e registra
+      ``report['fallback']`` — projeções que coincidem (junção) não são ambíguas;
+    - pé da projeção a ``<= ANCHOR_END_TOL_M`` de uma ponta do link: ancora no
+      nó da ponta, sem dividir;
+    - vários centróides no mesmo link: divide de uma vez em todos os pontos,
+      ordenados ao longo do link (pontos a ``<= ANCHOR_END_TOL_M`` um do outro
+      se fundem num único nó);
+    - conector mais longo que ``CONNECTOR_WARN_M``: ``report['far']``;
+    - zonas que compartilham nó de âncora ou pontos distintos do mesmo link:
+      ``report['shared_node']`` / ``report['shared_link']``.
+
+    Args:
+        arcs (list): Arcos já construídos (ex.: `build_network`), dois por link
+            (direto/reverso). Arcos de conector (``scope ==
+            CONNECTOR_LINK_ID``) são ignorados.
+        centroids (list): Lista de centróides — tuplas/listas (x, y) ou
+            objetos com métodos/atributos ``x``/``y``. O índice na lista é o id
+            da zona (mesma convenção de ``od_pairs`` em `assignment.assign`).
+        max_dist_m (float): Distância máxima, em metros, do centróide à malha
+            (link ou, no fallback, nó).
+        precision (int): Casas decimais do snap de nós.
+
+    Returns:
+        tuple: (net_arcs, connector_arcs, zone_node, report)
+            net_arcs (list): A malha de entrada com os links divididos
+                substituídos pelos pares de arcos de cada pedaço
+                (``arc_id=(link_id, sentido, k)``), na ordem original; link
+                sem centróide sai como o mesmo objeto `Arc`.
+            connector_arcs (list): Arcos conectores (ida e volta) por zona
+                ancorada, com `link_id=CONNECTOR_LINK_ID`, capacidade alta e
+                custo desprezível.
+            zone_node (dict): {zone_id: (CONNECTOR_LINK_ID, zone_id)} — o nó
+                virtual de onde o roteamento parte e chega (D2).
+            report (dict): Diagnóstico da ancoragem, por índice de zona:
+                ``'unconnected': [(i, dist_ou_None)]``,
+                ``'fallback': [i]``, ``'far': [(i, d)]``,
+                ``'shared_node': [[i, j, ...]]``,
+                ``'shared_link': {link_id: [i, j, ...]}`` e
+                ``'anchors': {i: (x, y)}``.
+    """
+    # 1. Agrupa os arcos de malha por link (par fw/bw); conectores não entram.
+    links = {}
+    for arc in arcs:
+        if getattr(arc, 'scope', None) == CONNECTOR_LINK_ID:
+            continue
+        entry = links.setdefault(arc.link_id, {'fw': None, 'bw': None})
+        if arc.forward:
+            if entry['fw'] is None:
+                entry['fw'] = arc
+        elif entry['bw'] is None:
+            entry['bw'] = arc
+
+    # Pré-cálculo por link: geometria na direção do fw (bbox para o pré-filtro
+    # e polyline para a projeção exata).
+    for entry in links.values():
+        ref = entry['fw'] if entry['fw'] is not None else entry['bw']
+        pts = [node_key(pt, precision) for pt in ref.geometry]
+        entry['points'] = pts
+        entry['length'] = calculate_length_m(pts)
+        entry['bbox'] = (
+            min(p[0] for p in pts), min(p[1] for p in pts),
+            max(p[0] for p in pts), max(p[1] for p in pts),
+        )
+
+    # Nós existentes da malha (para o fallback ambíguo), em ordem determinística.
     nodes = []
     seen = set()
     for arc in arcs:
+        if getattr(arc, 'scope', None) == CONNECTOR_LINK_ID:
+            continue
         for node in (arc.from_node, arc.to_node):
             if node not in seen:
                 seen.add(node)
                 nodes.append(node)
 
+    report = {
+        'unconnected': [], 'fallback': [], 'far': [],
+        'shared_node': [], 'shared_link': {}, 'anchors': {},
+    }
     connector_arcs = []
     zone_node = {}
-    unconnected = []
+    # zone_id -> {'kind': 'split'|'node', 'link_id', 'node', 'd', 's'}
+    anchored = {}
 
     for zone_id, centroid in enumerate(centroids):
         cx, cy = node_key(centroid, precision=6)
 
-        if not nodes:
-            unconnected.append(zone_id)
+        # 2. Pré-filtro por bbox de link (distância ponto-retângulo <=
+        # max_dist_m) e projeção ortogonal exata nos sobreviventes.
+        candidates = []   # (d, link_id, s, q)
+        min_seen = None   # menor distância conhecida (bbox ou exata)
+        for link_id, entry in links.items():
+            bbox_d = _point_rect_distance((cx, cy), entry['bbox'])
+            if min_seen is None or bbox_d < min_seen:
+                min_seen = bbox_d
+            if bbox_d > max_dist_m:
+                continue
+            proj = _project_point_on_polyline((cx, cy), entry['points'])
+            if proj is None:
+                continue
+            d, s, q = proj
+            if min_seen is None or d < min_seen:
+                min_seen = d
+            candidates.append((d, link_id, s, q))
+
+        # 3. Fora da rede: sem candidato ou nada dentro do teto.
+        if not candidates:
+            report['unconnected'].append((zone_id, min_seen))
+            continue
+        candidates.sort(key=lambda c: (c[0], str(c[1])))
+        best_d, best_link, best_s, best_q = candidates[0]
+        if best_d > max_dist_m:
+            report['unconnected'].append((zone_id, best_d))
             continue
 
-        nearest = min(nodes, key=lambda n: math.hypot(n[0] - cx, n[1] - cy))
-        dist = math.hypot(nearest[0] - cx, nearest[1] - cy)
-
-        if dist > max_dist_m:
-            unconnected.append(zone_id)
+        # 4. Ambiguidade: outro link quase equidistante cuja projeção não
+        # coincide com a do melhor (projeções iguais = junção, não ambíguo).
+        ambiguous = any(
+            d2 <= best_d + ANCHOR_AMBIGUITY_M
+            and _dist(q2, best_q) > ANCHOR_AMBIGUITY_M
+            for d2, _lid, _s2, q2 in candidates[1:]
+        )
+        if ambiguous:
+            nearest = min(
+                nodes,
+                key=lambda n: (math.hypot(n[0] - cx, n[1] - cy), n),
+            )
+            node_d = math.hypot(nearest[0] - cx, nearest[1] - cy)
+            if node_d > max_dist_m:
+                report['unconnected'].append((zone_id, node_d))
+                continue
+            report['fallback'].append(zone_id)
+            anchored[zone_id] = {
+                'kind': 'node', 'link_id': None,
+                'node': nearest, 'd': node_d, 's': None,
+            }
             continue
 
-        zone_node[zone_id] = nearest
-        centroid_node = (CONNECTOR_LINK_ID, zone_id)
-        t0 = calculate_free_flow_time(dist, CONNECTOR_FFS_KMH)
+        # 5/6. Na ponta: ancora no nó da ponta, sem dividir. No meio: a
+        # âncora é um nó novo, o link será dividido nele.
+        pts = links[best_link]['points']
+        if _dist(best_q, pts[0]) <= ANCHOR_END_TOL_M:
+            anchored[zone_id] = {
+                'kind': 'node', 'link_id': best_link,
+                'node': pts[0], 'd': best_d, 's': best_s,
+            }
+        elif _dist(best_q, pts[-1]) <= ANCHOR_END_TOL_M:
+            anchored[zone_id] = {
+                'kind': 'node', 'link_id': best_link,
+                'node': pts[-1], 'd': best_d, 's': best_s,
+            }
+        else:
+            anchored[zone_id] = {
+                'kind': 'split', 'link_id': best_link,
+                'node': node_key(best_q, precision), 'd': best_d, 's': best_s,
+            }
 
+    # 6. Divide cada link de uma vez nos pontos de âncora do meio, ordenados
+    # por s; pontos a <= ANCHOR_END_TOL_M um do outro se fundem num único nó.
+    split_items_by_link = {}
+    for zone_id, info in anchored.items():
+        if info['kind'] == 'split':
+            split_items_by_link.setdefault(info['link_id'], []).append(
+                (info['s'], info['node'], zone_id))
+
+    piece_arcs_by_link = {}
+    for link_id, items in split_items_by_link.items():
+        items.sort(key=lambda t: (t[0], t[2]))
+        merged = []   # [(s, nó, [zone_ids])]
+        for s, node, zone_id in items:
+            if merged and s - merged[-1][0] <= ANCHOR_END_TOL_M:
+                merged[-1][2].append(zone_id)
+            else:
+                merged.append((s, node, [zone_id]))
+        for _s, node, zone_ids in merged:
+            for z in zone_ids:
+                anchored[z]['node'] = node
+        piece_arcs_by_link[link_id] = _build_piece_arcs(
+            link_id, links[link_id],
+            [(s, node) for s, node, _zs in merged], precision)
+
+    # 7. Monta net_arcs na ordem original: link sem centróide sai com os
+    # mesmos objetos; link dividido sai com os pedaços.
+    net_arcs = []
+    for link_id, entry in links.items():
+        if link_id in piece_arcs_by_link:
+            net_arcs.extend(piece_arcs_by_link[link_id])
+        else:
+            if entry['fw'] is not None:
+                net_arcs.append(entry['fw'])
+            if entry['bw'] is not None:
+                net_arcs.append(entry['bw'])
+
+    # 8. Conectores entre o nó virtual da zona e o nó de âncora (D2).
+    for zone_id, centroid in enumerate(centroids):
+        info = anchored.get(zone_id)
+        if info is None:
+            continue
+        cx, cy = node_key(centroid, precision=6)
+        node = info['node']
+        d = info['d']
+        zone_node[zone_id] = (CONNECTOR_LINK_ID, zone_id)
+        report['anchors'][zone_id] = node
+        if d > CONNECTOR_WARN_M:
+            report['far'].append((zone_id, d))
+        t0 = calculate_free_flow_time(d, CONNECTOR_FFS_KMH)
         connector_arcs.append(Arc(
             arc_id=(f'{CONNECTOR_LINK_ID}-{zone_id}', 'fw'),
             link_id=CONNECTOR_LINK_ID,
-            from_node=centroid_node,
-            to_node=nearest,
-            length=dist,
+            from_node=(CONNECTOR_LINK_ID, zone_id),
+            to_node=node,
+            length=d,
             t0=t0,
             capacity=CONNECTOR_CAPACITY_VPH,
             scope=CONNECTOR_LINK_ID,
             params={},
             sources={},
-            geometry=[(cx, cy), nearest],
+            geometry=[(cx, cy), node],
             forward=True,
         ))
         connector_arcs.append(Arc(
             arc_id=(f'{CONNECTOR_LINK_ID}-{zone_id}', 'bw'),
             link_id=CONNECTOR_LINK_ID,
-            from_node=nearest,
-            to_node=centroid_node,
-            length=dist,
+            from_node=node,
+            to_node=(CONNECTOR_LINK_ID, zone_id),
+            length=d,
             t0=t0,
             capacity=CONNECTOR_CAPACITY_VPH,
             scope=CONNECTOR_LINK_ID,
             params={},
             sources={},
-            geometry=[nearest, (cx, cy)],
+            geometry=[node, (cx, cy)],
             forward=False,
         ))
 
-    return connector_arcs, zone_node, unconnected
+    # 9. Zonas que compartilham nó de âncora ou pontos distintos do mesmo link.
+    by_node = {}
+    by_link = {}
+    for zone_id, info in anchored.items():
+        by_node.setdefault(info['node'], []).append(zone_id)
+        if info['link_id'] is not None:
+            by_link.setdefault(info['link_id'], {}).setdefault(
+                info['node'], []).append(zone_id)
+    report['shared_node'] = sorted(
+        (sorted(zs) for zs in by_node.values() if len(zs) > 1),
+        key=lambda zs: zs[0],
+    )
+    report['shared_link'] = {
+        link_id: sorted(z for zs in by_link[link_id].values() for z in zs)
+        for link_id in by_link if len(by_link[link_id]) > 1
+    }
+
+    return net_arcs, connector_arcs, zone_node, report
 
 
 __all__ = [
@@ -502,6 +870,8 @@ __all__ = [
     'build_directed_arcs',
     'build_network',
     'clip_and_clean',
-    'connect_centroids',
+    'anchor_centroids',
     'reproject_layer',
+    'DEGREES_SUSPECT_SPAN',
+    'coords_crs_mismatch',
 ]

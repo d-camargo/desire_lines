@@ -243,6 +243,14 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             points.append((pt.x(), pt.y()))
         return points, zone_keys
 
+    @staticmethod
+    def _format_zone_ids(zone_ids, max_items=10):
+        """Format a list of zone identifiers, truncating with '…' after max_items."""
+        items = [str(z) for z in zone_ids]
+        if len(items) > max_items:
+            return ', '.join(items[:max_items]) + ', …'
+        return ', '.join(items)
+
     def build_traffic_network(
         self,
         road_layer=None,
@@ -263,7 +271,17 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
 
         Reports every edge case as a translated message instead of raising:
         GisBR download failure, empty network after clipping, non-positive
-        capacity and centroids that reach no node within ``max_dist_m``.
+        capacity and centroids that reach no highway link or node within ``max_dist_m``.
+
+        Centroids within reach are anchored by orthogonal projection onto the
+        nearest highway link (or at a link end / nearest node when ambiguous or
+        near ends). Links with interior anchors are split so trips enter and
+        leave the mesh at the projection point.
+
+        Connector arcs link each centroid from its virtual zone node
+        ``(CONNECTOR_LINK_ID, zone_id)`` to its anchor on the highway network.
+        The coordinate of each anchor is stored in ``self.traffic_anchors``
+        (mapping zone id -> ``(x, y)``).
 
         A layer with a ``crs()`` is first moved to a metric working CRS (D1):
         ``aon.pick_metric_crs`` keeps a projected CRS as is, and turns a
@@ -300,9 +318,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         Returns:
             tuple: ``(graph, arcs, zone_node, unconnected)``. ``graph`` is None
                 and ``arcs`` empty when the network could not be built at all;
-                ``zone_node`` maps zone id -> graph node and ``unconnected``
-                lists the zone ids left out.
+                ``zone_node`` maps zone id -> virtual graph node and
+                ``unconnected`` lists the zone ids left out.
         """
+        self.traffic_anchors = {}
         if fetch_gisbr or (road_layer is None and (bbox or uf)):
             try:
                 road_layer = gisbr_bridge.fetch_road_network(
@@ -319,6 +338,50 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         crs_getter = getattr(road_layer, 'crs', None)
         src_crs = crs_getter() if callable(crs_getter) else None
         work_crs = src_crs
+
+        def _check_crs_mismatch(layer_name, crs_obj, extent_box):
+            mismatch = network.coords_crs_mismatch(extent_box, crs_obj.isGeographic())
+            if mismatch == 'degrees_in_projected':
+                self._push_message(
+                    self.tr('The {} layer is labelled {} (projected, metres) but its '
+                            'coordinates look like degrees. Set the layer CRS to the '
+                            'geographic one (e.g. EPSG:4326 or EPSG:4674) and run again.')
+                    .format(layer_name, crs_obj.authid() or crs_obj.description()),
+                    level='critical')
+                return True
+            if mismatch == 'out_of_geographic_range':
+                self._push_message(
+                    self.tr('The {} layer is labelled {} (geographic, degrees) but its '
+                            'coordinates are out of the longitude/latitude range. Set the '
+                            'layer CRS to the projected one the coordinates are in and run again.')
+                    .format(layer_name, crs_obj.authid() or crs_obj.description()),
+                    level='critical')
+                return True
+            return False
+
+        # D8: Guarda de rótulo de CRS × coordenadas (antes do pick_metric_crs)
+        if (src_crs is not None and src_crs.isValid()
+                and hasattr(road_layer, 'extent')):
+            ext = road_layer.extent()
+            if not (hasattr(ext, 'isNull') and ext.isNull()):
+                ext_box = (ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum())
+                if _check_crs_mismatch(self.tr('highway network'), src_crs, ext_box):
+                    return None, [], {}, []
+
+        cent_crs = centroids_crs if centroids_crs is not None else src_crs
+        centroids = list(centroids or [])
+        if centroids and cent_crs is not None and cent_crs.isValid():
+            c_pts = [
+                (p.x(), p.y()) if hasattr(p, 'x') and callable(p.x) else (p[0], p[1])
+                for p in centroids
+            ]
+            if c_pts:
+                xs = [pt[0] for pt in c_pts]
+                ys = [pt[1] for pt in c_pts]
+                c_ext = (min(xs), min(ys), max(xs), max(ys))
+                if _check_crs_mismatch(self.tr('centroids'), cent_crs, c_ext):
+                    return None, [], {}, []
+
         if (src_crs is not None and src_crs.isValid()
                 and hasattr(road_layer, 'extent')):
             ext = road_layer.extent()
@@ -408,11 +471,13 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             return graph.build_graph(arcs), arcs, {}, []
 
         keys = list(zone_keys) if zone_keys else list(range(len(centroids)))
-        connectors, node_by_index, unconnected_idx = network.connect_centroids(
-            arcs, centroids, max_dist_m=max_dist_m)
-        all_arcs = arcs + connectors
+        net_arcs, connectors, node_by_index, anchor_report = (
+            network.anchor_centroids(arcs, centroids, max_dist_m=max_dist_m))
+        all_arcs = net_arcs + connectors
         zone_node = {keys[i]: node for i, node in node_by_index.items()}
-        unconnected = [keys[i] for i in unconnected_idx]
+        unconnected = [keys[i] for i, _dist in anchor_report['unconnected']]
+        self.traffic_anchors = {
+            keys[i]: anchor_xy for i, anchor_xy in anchor_report['anchors'].items()}
 
         if unconnected and not zone_node:
             self._push_message(
@@ -421,8 +486,40 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 level='critical')
         elif unconnected:
             self._push_message(
-                self.tr('{} centroid(s) not connected to the highway network.')
-                .format(len(unconnected)))
+                self.tr('{} centroid(s) not connected to the highway network '
+                        '(nothing within {:.0f} m): zones {}.').format(
+                            len(unconnected), max_dist_m,
+                            self._format_zone_ids(unconnected)))
+
+        if anchor_report['far']:
+            far_keys = [keys[i] for i, _d in anchor_report['far']]
+            self._push_message(
+                self.tr('{} connector(s) longer than {:.0f} m: zones {}. '
+                        'Check the centroids or the network clip.').format(
+                            len(anchor_report['far']), network.CONNECTOR_WARN_M,
+                            self._format_zone_ids(far_keys)))
+
+        for group in anchor_report['shared_node'][:5]:
+            group_keys = [keys[i] for i in group]
+            self._push_message(
+                self.tr('Zones {} are anchored to the same network node; '
+                        'trips between them use only the connectors.').format(
+                            self._format_zone_ids(group_keys)))
+
+        for link_id in sorted(anchor_report['shared_link'], key=str):
+            link_keys = [keys[i] for i in anchor_report['shared_link'][link_id]]
+            self._push_message(
+                self.tr('Zones {} are anchored to the same highway link ({}).').format(
+                    self._format_zone_ids(link_keys), link_id),
+                level='info')
+
+        if anchor_report['fallback']:
+            fallback_keys = [keys[i] for i in anchor_report['fallback']]
+            self._push_message(
+                self.tr('{} centroid(s) anchored to the nearest node because '
+                        'the nearest link was ambiguous: zones {}.').format(
+                            len(anchor_report['fallback']),
+                            self._format_zone_ids(fallback_keys)))
 
         return graph.build_graph(all_arcs), all_arcs, zone_node, unconnected
 
