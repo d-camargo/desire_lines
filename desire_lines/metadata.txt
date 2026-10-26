@@ -8,7 +8,7 @@ qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.5.0
+version=0.6.0
 author=Diego Camargo
 email=dg.camargo@proton.me
 
@@ -22,6 +22,11 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.6.0
+    - Single toolbar button with drop-down menu.
+    - GisBR download by metropolitan area, micro-region, meso-region and health macro-region.
+    - State road network picked from the GisBR catalogue (adds Goiás).
+    - Fix: assignment output layer now opens (layer name was `None` and a layer source in the output field duplicated the path).
     0.5.0
     - Highway traffic assignment moved to a dockable panel.
     - HCM parameters organized into a dedicated tab.

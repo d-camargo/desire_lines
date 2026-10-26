@@ -53,6 +53,8 @@ class PluginUiMixin:
         existing ones (matrix, centroids, Desire_Lines) instead of replacing
         the whole file.
         """
+        if not table:
+            raise ValueError('table name is required')
         out_path = self._output_path()
         options = QgsVectorFileWriter.SaveVectorOptions()
         options.driverName = 'GPKG'

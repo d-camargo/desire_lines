@@ -6,7 +6,7 @@ HCM 6ª edição** e devolve volume, relação volume/capacidade (`vc`) e nível
 serviço por arco. É o resultado que a rede sintética da aba
 [AoN (Delaunay)](aon-delaunay.md) não consegue dar — lá não há capacidade.
 
-Para abrir o painel, acesse o menu **Vetor ▸ Desire Lines ▸ Alocação em rodovias**.
+Para abrir o painel, use o **botão único da barra com seta de menu** (o clique abre o diálogo principal; a seta, o menu com *Desire Lines* e *Alocação em rodovias* ["Highway Assignment"]) ou acesse o menu **Vetor ▸ Desire Lines ▸ Alocação em rodovias**.
 O painel ancora no lado direito da janela do QGIS e pode permanecer aberto
 enquanto você navega no mapa ou edita camadas. Ele é dividido em duas abas
 internas: **Alocação** ("Allocation") e **Parâmetros HCM** ("HCM parameters").
@@ -30,7 +30,7 @@ O grupo *Rede* ("Network") tem duas opções, mutuamente exclusivas:
 | Opção | O que preencher | Quando usar |
 |---|---|---|
 | *Usar uma camada existente* ("Use an existing layer") | *Camada de rodovias* ("Highway layer") e, opcionalmente, *Campo de id do link (opcional)* ("Link id field (optional)") | Você já tem a malha carregada no projeto (arquivo local, recorte próprio) |
-| *Baixar via GisBR (malha oficial SNV/DER)* ("Download via GisBR (official SNV/DER network)") | *UF* ("State (UF)") (sigla de **2 letras**) e a caixa *Recortar para a extensão dos centroides (com buffer)* ("Clip to the centroids extent (plus buffer)") | Quer a malha oficial baixada na hora |
+| *Baixar via GisBR (malha oficial SNV/DER)* ("Download via GisBR (official SNV/DER network)") | *Estado (UF)* ("State (UF)") (sigla de **2 letras**), *Área de download* ("Download area") e, se regional, *Região* ("Region") | Quer a malha oficial baixada na hora |
 
 O *Campo de id do link (opcional)* é opcional: serve para o campo `link_id` da saída
 apontar de volta para o identificador da sua base. Sem ele, o plugin gera um
@@ -43,11 +43,20 @@ id próprio.
     camada existente*. O resto do painel **funciona normalmente** com camada
     própria; só o download é bloqueado.
 
-Com *Recortar para a extensão dos centroides (com buffer)* marcada, a área de estudo é a
-**envoltória dos centroides mais o raio de conector** (*Conector máximo (m)* ("Max connector (m)")).
-Isso limita o download e também recorta uma camada existente — rede menor,
-grafo mais rápido. Se o recorte falhar, o plugin avisa e segue com a malha
-inteira.
+O combo *Área de download* ("Download area") define a abrangência territorial da malha a ser baixada e recortada, com seis opções disponíveis:
+
+1. **Extensão dos centroides (+ raio)** ("Centroid extent (+ radius)"): a área de estudo é a envoltória retangular dos centroides carregados acrescida do raio configurado em *Conector máximo (m)* ("Max connector (m)"). É a opção padrão e recomendada para focar o grafo apenas nos arredores da demanda.
+2. **UF inteira** ("Whole state"): faz o download da malha completa do estado informado em *Estado (UF)* ("State (UF)").
+3. **Região Metropolitana** ("Metropolitan area"): recorta a malha pela extensão da Região Metropolitana selecionada.
+4. **Microrregião** ("Micro-region"): recorta a malha pela extensão da microrregião geográfica (IBGE) selecionada.
+5. **Mesorregião** ("Meso-region"): recorta a malha pela extensão da mesorregião geográfica (IBGE) selecionada.
+6. **Macrorregião de saúde** ("Health macro-region"): recorta a malha pela extensão da macrorregião de saúde selecionada.
+
+As quatro opções regionais (*Região Metropolitana*, *Microrregião*, *Mesorregião* e *Macrorregião de saúde*) exigem o preenchimento da *UF* (2 letras), que faz o plugin carregar dinamicamente as regiões disponíveis daquele estado, e a escolha obrigatória de um item no combo *Região* ("Region"). Enquanto uma região válida não for selecionada, os botões de execução permanecem desabilitados.
+
+A escolha da fonte rodoviária é feita de forma automática a partir do catálogo do GisBR: se a UF possuir base viária estadual cadastrada — como é o caso de Minas Gerais (`der_mg_rodovias`) e Goiás (`go_malha_viaria`) hoje —, o plugin utiliza a malha oficial estadual; caso contrário, recorre automaticamente à malha rodoviária federal do Sistema Nacional de Viação (SNV/DNIT) como reserva (*fallback*).
+
+Quando utilizada a opção *Usar uma camada existente*, a área de estudo também é recortada pela extensão dos centroides (com buffer de conector), limitando o tamanho da rede e acelerando a montagem do grafo. Se o recorte falhar, o plugin exibe um aviso e segue com a malha inteira.
 
 ### A alocação
 

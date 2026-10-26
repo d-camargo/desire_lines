@@ -37,7 +37,10 @@ código, não uma promessa formal do metadado.
 ## Onde o plugin aparece depois de instalado
 
 O Desire Lines aparece em dois lugares: na barra de ferramentas de
-complementos, e no menu *Vetor* → *&Desire Lines*.
+complementos com um **botão único com seta de menu** (o clique no ícone abre o
+diálogo principal *Desire Lines*; a seta abre o menu suspenso com as opções
+*Desire Lines* e *Alocação em rodovias* ["Highway Assignment"]), e no menu
+*Vetor* → *&Desire Lines* (com as mesmas opções).
 
 ![Ícone do Desire Lines na barra de ferramentas e entrada no menu Vetor](https://github.com/user-attachments/assets/69aaddac-a9c1-4cee-a3cb-c3fb0cbf7148)
 

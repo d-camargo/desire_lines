@@ -39,8 +39,10 @@ into the same output GeoPackage.
    **Install from ZIP**.
 2. Select the downloaded `desire_lines-<version>.zip` and click *Install Plugin*;
    confirm the QGIS security warning with *Yes*.
-3. Close the plugins window. The plugin shows up in the plugins toolbar and under
-   the *Vector → &Desire Lines* menu.
+3. Close the plugins window. The plugin shows up as a single button with a
+   drop-down menu in the plugins toolbar (clicking the icon opens the *Desire Lines*
+   dialog; clicking the arrow opens the menu with *Desire Lines* and *Highway Assignment*)
+   and under the *Vector → &Desire Lines* menu.
 
 Supported QGIS: 3.0 up to the 4.x series (Qt5 and Qt6 builds). GISBR itself requires
 QGIS 3.16 or newer.

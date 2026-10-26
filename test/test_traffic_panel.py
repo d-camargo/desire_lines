@@ -13,7 +13,7 @@ __date__ = '2024-07-13'
 __copyright__ = 'Copyright 2024, Diego Camargo'
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QDialog, QScrollArea, QApplication
 
@@ -234,6 +234,109 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.assertEqual(len(flows), len(arcs))
             self.assertEqual(stats['allocated'], 1)
         self.assertIsNotNone(self.dialog._provenance_note(arcs))
+
+    def test_output_path_strips_layername(self):
+        """_output_path strips pipe-layername suffix from file path (D6)."""
+        self.dialog.taOutputFile.setFilePath('/tmp/x/out.gpkg|layername=alocacao')
+        self.assertEqual(self.dialog._output_path(), '/tmp/x/out.gpkg')
+
+    def test_output_path_strips_layername_without_extension(self):
+        """_output_path strips pipe-layername and appends .gpkg if missing (D6)."""
+        self.dialog.taOutputFile.setFilePath('/tmp/x/out|layername=a')
+        self.assertEqual(self.dialog._output_path(), '/tmp/x/out.gpkg')
+
+    def test_publish_traffic_layer_defaults_table_to_mem_name(self):
+        """_publish_traffic_layer with table=None passes mem.name() to _write_layer_to_gpkg (D6)."""
+        self.dialog._write_layer_to_gpkg = MagicMock(return_value=None)
+        self.dialog._publish_traffic_layer(
+            arcs=[], flows=[], stats={'metodo': 'msa'}, crs=None, table=None)
+        self.dialog._write_layer_to_gpkg.assert_called_once()
+        self.assertEqual(
+            self.dialog._write_layer_to_gpkg.call_args[0][1], 'alocacao_msa')
+
+    def test_panel_has_no_clip_to_centroids(self):
+        """The panel no longer has taClipToCentroids (D5)."""
+        self.assertFalse(hasattr(self.dialog, 'taClipToCentroids'))
+
+    def test_recorte_tipo_has_six_items_with_d5_data(self):
+        """taRecorteTipo has 6 items with D5 data."""
+        combo = self.dialog.taRecorteTipo
+        self.assertEqual(combo.count(), 6)
+        datas = [combo.itemData(i) for i in range(combo.count())]
+        self.assertEqual(datas, ['centroides', 'uf', 'rm', 'micro', 'meso', 'macsaud'])
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.listar_recortes')
+    def test_reload_recortes_populates_ta_recorte(self, mock_listar):
+        """With listar_recortes mocked, choosing 'rm' with UF 'MG' populates taRecorte."""
+        mock_listar.return_value = [('04501', 'Grande BH'), ('04502', 'Vale do Aço')]
+        self.dialog.taUf.setText('MG')
+        rm_idx = self.dialog.taRecorteTipo.findData('rm')
+        self.dialog.taRecorteTipo.setCurrentIndex(rm_idx)
+
+        mock_listar.assert_called_with('rm', 'MG')
+        self.assertEqual(self.dialog.taRecorte.count(), 2)
+        self.assertEqual(self.dialog.taRecorte.itemData(0), '04501')
+        self.assertEqual(self.dialog.taRecorte.itemText(0), 'Grande BH')
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.extensao_recorte')
+    def test_gisbr_bbox_decides_bbox_for_uf_and_micro(self, mock_extensao):
+        """_gisbr_bbox returns None for 'uf' and the extensao_recorte tuple for 'micro'."""
+        uf_idx = self.dialog.taRecorteTipo.findData('uf')
+        self.dialog.taRecorteTipo.setCurrentIndex(uf_idx)
+        self.assertIsNone(self.dialog._gisbr_bbox(CENTROIDS, 50.0))
+
+        mock_extensao.return_value = (100.0, 200.0, 300.0, 400.0)
+        micro_idx = self.dialog.taRecorteTipo.findData('micro')
+        self.dialog.taRecorteTipo.setCurrentIndex(micro_idx)
+        self.dialog.taRecorte.clear()
+        self.dialog.taRecorte.addItem('Microrregião de BH', '3101')
+        self.dialog.taRecorte.setCurrentIndex(0)
+
+        bbox = self.dialog._gisbr_bbox(CENTROIDS, 50.0)
+        mock_extensao.assert_called_with('micro', '3101')
+        self.assertEqual(bbox, (100.0, 200.0, 300.0, 400.0))
+
+    def test_tab_state_regional_recorte_controls_and_readiness(self):
+        """taRecorte is enabled only with GisBR + regional type, and network_ready requires currentData."""
+        with patch('desire_lines.traffic.gisbr_bridge.is_available', return_value=True):
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+
+            # Non-regional (uf): taRecorte disabled, network is ready
+            self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('uf'))
+            self.dialog._update_traffic_tab_state()
+            self.assertFalse(self.dialog.taRecorte.isEnabled())
+            self.assertFalse(self.dialog.taLabelRecorte.isEnabled())
+            self.assertTrue(self.dialog.taRunCapacity.isEnabled())
+
+            # Regional (rm) with empty taRecorte: taRecorte enabled, network NOT ready
+            self.dialog.taRecorte.clear()
+            self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('rm'))
+            self.dialog._update_traffic_tab_state()
+            self.assertTrue(self.dialog.taRecorte.isEnabled())
+            self.assertTrue(self.dialog.taLabelRecorte.isEnabled())
+            self.assertFalse(self.dialog.taRunCapacity.isEnabled())
+
+            # Regional with item selected in taRecorte: network ready
+            self.dialog.taRecorte.addItem('Grande BH', '04501')
+            self.dialog.taRecorte.setCurrentIndex(0)
+            self.dialog._update_traffic_tab_state()
+            self.assertTrue(self.dialog.taRunCapacity.isEnabled())
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.extensao_recorte',
+           side_effect=RuntimeError('Falha ao obter recorte'))
+    def test_gisbr_bbox_runtime_error_pushes_critical_message(self, mock_extensao):
+        """RuntimeError in extensao_recorte produces a critical message and returns."""
+        with patch('desire_lines.traffic.gisbr_bridge.is_available', return_value=True):
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+            self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('rm'))
+            self.dialog.taRecorte.addItem('Grande BH', '04501')
+            self.dialog.taRecorte.setCurrentIndex(0)
+
+            self.dialog.run_capacity()
+            self.assertEqual(self.dialog.last_message[0], 'critical')
+            self.assertIn('Falha ao obter recorte', self.dialog.last_message[1])
 
 
 

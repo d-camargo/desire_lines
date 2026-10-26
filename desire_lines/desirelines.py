@@ -24,7 +24,7 @@
 import os
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QMenu, QToolButton
 from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
 
 # Import the code for the dialog
@@ -67,6 +67,11 @@ class DesireLines:
         # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Desire Lines')
+        self.toolbar_action = None
+        self.toolbar_button = None
+        self.toolbar_menu = None
+        self.main_action = None
+        self.traffic_action = None
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
@@ -171,18 +176,31 @@ class DesireLines:
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
         icon_path = os.path.join(os.path.dirname(__file__), 'icon.png')
-        self.add_action(
+        self.main_action = self.add_action(
             icon_path,
             text=self.tr(u'Desire Lines'),
             callback=self.run,
-            parent=self.iface.mainWindow())
+            parent=self.iface.mainWindow(),
+            add_to_toolbar=False)
 
-        self.add_action(
+        self.traffic_action = self.add_action(
             icon_path,
             text=self.tr(u'Alocação em rodovias'),
             callback=self.show_traffic_panel,
             parent=self.iface.mainWindow(),
-            checkable=True)
+            checkable=True,
+            add_to_toolbar=False)
+
+        self.toolbar_menu = QMenu(self.iface.mainWindow())
+        self.toolbar_menu.addAction(self.main_action)
+        self.toolbar_menu.addAction(self.traffic_action)
+
+        self.toolbar_button = QToolButton(self.iface.mainWindow())
+        self.toolbar_button.setMenu(self.toolbar_menu)
+        self.toolbar_button.setDefaultAction(self.main_action)
+        self.toolbar_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+
+        self.toolbar_action = self.iface.addToolBarWidget(self.toolbar_button)
 
         # will be set False in run()
         self.first_start = True
@@ -209,7 +227,9 @@ class DesireLines:
             self.iface.removePluginVectorMenu(
                 self.tr(u'&Desire Lines'),
                 action)
-            self.iface.removeToolBarIcon(action)
+        if self.toolbar_action is not None:
+            self.iface.removeToolBarIcon(self.toolbar_action)
+            self.toolbar_action = None
 
     def run(self):
         """Run method that performs all the real work"""

@@ -30,7 +30,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.taRunAssign.clicked.connect(self.run_assignment)
         for radio in (self.taNetFromLayer, self.taNetFromGisbr):
             radio.toggled.connect(self._update_traffic_tab_state)
+        self.taUf.textChanged.connect(self._reload_recortes)
         self.taUf.textChanged.connect(self._update_traffic_tab_state)
+        self.taRecorteTipo.currentIndexChanged.connect(self._reload_recortes)
+        self.taRecorteTipo.currentIndexChanged.connect(self._update_traffic_tab_state)
+        self.taRecorte.currentIndexChanged.connect(self._update_traffic_tab_state)
         self.taMethod.currentIndexChanged.connect(self._update_traffic_tab_state)
         for combo in (self.taNetworkCombo, self.taMatrixCombo,
                       self.taCentroidsCombo):
@@ -39,6 +43,16 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                       self.taZoneIdField):
             combo.fieldChanged.connect(self._update_traffic_tab_state)
         
+        for text, data in (
+            (self.tr('Centroid extent (+ radius)'), 'centroides'),
+            (self.tr('Whole state'), 'uf'),
+            (self.tr('Metropolitan area'), 'rm'),
+            (self.tr('Micro-region'), 'micro'),
+            (self.tr('Meso-region'), 'meso'),
+            (self.tr('Health macro-region'), 'macsaud'),
+        ):
+            self.taRecorteTipo.addItem(text, data)
+
         self.taMatrixCombo.setFilters(QgsMapLayerProxyModel.NoGeometry)
         self.taCentroidsCombo.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.taCentroidsCombo.setShowCrs(True)
@@ -60,6 +74,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
     def _output_path(self):
         """Return the user-chosen output GPKG path, or a sensible fallback."""
         path = (self.taOutputFile.filePath() or '').strip()
+        path = path.split('|', 1)[0].strip()
         if path:
             if not path.lower().endswith('.gpkg'):
                 path = path + '.gpkg'
@@ -150,6 +165,15 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         """Point the traffic-id field combo at the selected centroids layer."""
         self.taZoneIdField.setLayer(self.taCentroidsCombo.currentLayer())
 
+    def _reload_recortes(self):
+        """Populate the region combo from GisBR when a regional type is chosen (D5)."""
+        self.taRecorte.clear()
+        tipo = self.taRecorteTipo.currentData()
+        uf = self.taUf.text().strip()
+        if tipo in gisbr_bridge.TIPOS_RECORTE and len(uf) == 2:
+            for item_id, nome in gisbr_bridge.listar_recortes(tipo, uf):
+                self.taRecorte.addItem(nome, item_id)
+
     def _update_traffic_tab_state(self):
         """Enable/disable the highway tab and its buttons (steps 17, D6).
 
@@ -170,16 +194,22 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         for widget in (self.taNetworkCombo, self.taIdField, self.taLabelNetwork,
                        self.taLabelIdField):
             widget.setEnabled(not from_gisbr)
-        for widget in (self.taUf, self.taLabelUf, self.taClipToCentroids):
+        for widget in (self.taUf, self.taLabelUf, self.taRecorteTipo,
+                       self.taLabelRecorteTipo):
             widget.setEnabled(from_gisbr)
+
+        is_regional = self.taRecorteTipo.currentData() in gisbr_bridge.TIPOS_RECORTE
+        for widget in (self.taRecorte, self.taLabelRecorte):
+            widget.setEnabled(from_gisbr and is_regional)
 
         is_msa = self._traffic_method() == 'msa'
         for widget in (self.taMaxIter, self.taGapTol,
                        self.taLabelMaxIter, self.taLabelGapTol):
             widget.setEnabled(is_msa)
 
+        regional_ok = (not is_regional) or bool(self.taRecorte.currentData())
         network_ready = bool(
-            (from_gisbr and available and len(self.taUf.text().strip()) == 2)
+            (from_gisbr and available and len(self.taUf.text().strip()) == 2 and regional_ok)
             or (not from_gisbr and self.taNetworkCombo.currentLayer()))
         self.taRunCapacity.setEnabled(network_ready)
         self.taRunAssign.setEnabled(network_ready and bool(
@@ -367,11 +397,20 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         return (min(xs) - buffer_m, min(ys) - buffer_m,
                 max(xs) + buffer_m, max(ys) + buffer_m)
 
+    def _gisbr_bbox(self, centroids, max_dist_m):
+        """Decide the bounding box for GisBR download according to taRecorteTipo (D5)."""
+        tipo = self.taRecorteTipo.currentData()
+        if tipo == 'uf':
+            return None
+        if tipo == 'centroides':
+            return self._traffic_bbox(centroids, max_dist_m)
+        return gisbr_bridge.extensao_recorte(tipo, self.taRecorte.currentData())
+
     def _publish_traffic_layer(self, arcs, flows, stats, crs, table):
         """Write the arcs+flows layer to the output GeoPackage and style it by v/c."""
         mem = outputs.flows_to_layer(
             arcs, flows, stats=stats, crs=crs, layer_name=table)
-        out_layer = self._write_layer_to_gpkg(mem, table)
+        out_layer = self._write_layer_to_gpkg(mem, table or mem.name())
         if out_layer:
             outputs.apply_vc_style(out_layer)
         return out_layer
@@ -395,6 +434,22 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         from_gisbr = self.taNetFromGisbr.isChecked()
         crs = road_layer.crs() if road_layer is not None else None
 
+        bbox = None
+        if from_gisbr:
+            centroids = None
+            cent_layer = self.taCentroidsCombo.currentLayer()
+            if cent_layer is not None:
+                centroids, _ = self._traffic_centroid_points(
+                    cent_layer, self.taZoneIdField.currentField())
+            max_dist_m = self.taMaxDist.value()
+            try:
+                bbox = self._gisbr_bbox(centroids, max_dist_m)
+            except RuntimeError as exc:
+                self._push_message(
+                    self.tr('Could not obtain region extent: {}').format(exc),
+                    level='critical')
+                return
+
         progress = self._push_progress(self.tr('Computing HCM capacity…'))
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -403,6 +458,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 overrides=self._traffic_overrides(),
                 id_field=self.taIdField.currentField() or None,
                 fetch_gisbr=from_gisbr,
+                bbox=bbox,
                 uf=self.taUf.text().strip() or None,
                 crs=crs,
             )
@@ -442,11 +498,16 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 level='critical')
             return
 
-        # D4: the study area is the centroids' bbox plus the connector radius.
-        # It both bounds the GisBR download and clips an existing layer.
-        bbox = self._traffic_bbox(centroids, max_dist_m)
-        if from_gisbr and not self.taClipToCentroids.isChecked():
-            bbox = None
+        if from_gisbr:
+            try:
+                bbox = self._gisbr_bbox(centroids, max_dist_m)
+            except RuntimeError as exc:
+                self._push_message(
+                    self.tr('Could not obtain region extent: {}').format(exc),
+                    level='critical')
+                return
+        else:
+            bbox = self._traffic_bbox(centroids, max_dist_m)
 
         progress = self._push_progress(
             self.tr('Assigning traffic ({})…').format(method.upper()))
