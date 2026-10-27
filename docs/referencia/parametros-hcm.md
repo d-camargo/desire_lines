@@ -16,21 +16,23 @@ Nenhum parâmetro de capacidade é aplicado a uma rodovia sem que sua origem sej
 
 ### Hierarquia de Resolução
 
-O módulo [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência:
+O módulo [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência rigorosa (Decisão D2):
 
 ```
-[ Sobrescrita do Usuário ]  ---> Se definido na UI  ---> valor = UI,       src = 'usuario'
-           | (se ausente)
-[ Atributo da Camada ]     ---> Se existe na feição ---> valor = Feição,   src = 'oficial'
-           | (se ausente)
-[ Valor Padrão (Default) ] ---> Fallback do catálogo ---> valor = Default,  src = 'padrao'
+[ Sobrescrita do Usuário ]    ---> Se definido valor global na UI  ---> valor = UI,           src = 'usuario'
+            | (se ausente)
+[ Campo Mapeado na UI ]       ---> Se campo selecionado na feição   ---> valor = Campo Mapeado, src = 'oficial'
+            | (se ausente/nulo)
+[ Atributo Candidato ]        ---> Se existe campo candidato       ---> valor = Feição,        src = 'oficial'
+            | (se ausente/nulo)
+[ Valor Padrão (Default) ]    ---> Fallback do catálogo            ---> valor = Default,       src = 'padrao'
 ```
 
 ---
 
-## 2. Tabela Completa de Parâmetros HCM
+## 2. Tabela Completa de Parâmetros Operacionais e HCM
 
-A tabela abaixo lista os 15 parâmetros gerenciados pelo plugin (definidos em [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py)), suas unidades, tipos, valores padrão e os campos oficiais buscados automaticamente nas camadas de entrada.
+A tabela abaixo lista os 18 parâmetros gerenciados pelo plugin (definidos em [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py)), suas unidades, tipos, valores padrão e os campos oficiais buscados automaticamente nas camadas de entrada.
 
 | Identificador (`id`) | Rótulo / Parâmetro | Unidade | Tipo | Valor Padrão | Campos Candidatos na Camada (Fonte Oficial) | Descrição / Valores Aceitos |
 |---|---|---|---|---|---|---|
@@ -47,33 +49,52 @@ A tabela abaixo lista os 15 parâmetros gerenciados pelo plugin (definidos em [`
 | `pct_no_passing` | Zonas de ultrapassagem proibida | % | Decimal (`float`) | `50.0` | `pct_no_passing`, `ultrapassagem_proibida`, `pct_proib_ultrapassagem` | Porcentagem da extensão do trecho de pista simples com marcação contínua de proibição de ultrapassagem. |
 | `access_density` | Densidade de acessos | acessos/km | Decimal (`float`) | `10.0` | `access_density`, `densidade_acessos`, `n_acessos_km` | Número de intersecções, acessos comerciais e entradas por quilômetro (usado no cálculo de FFS para multipistas). |
 | `directional_split` | Divisão direcional | % | Decimal (`float`) | `50.0` | `directional_split`, `divisao_direcional`, `split_dir` | Proporção de fluxo no sentido principal (ex.: 50 para 50/50, 60 para 60/40). |
-| `bpr_alpha` | Alfa da função BPR | - | Decimal (`float`) | `0.15` | `bpr_alpha`, `alpha_bpr` | Coeficiente `alfa` da equação de tempo de viagem `t = t0 * [1 + alfa * (v/c) ^ beta]`. |
-| `bpr_beta` | Beta da função BPR | - | Decimal (`float`) | `4.0` | `bpr_beta`, `beta_bpr` | Expoente `beta` da equação de congestionamento BPR. |
+| `bpr_alpha` | Alfa da função BPR | - | Decimal (`float`) | `0.15` | `bpr_alpha`, `alpha_bpr` | Coeficiente `alfa` da equação de tempo de viagem `t = t0 * [1 + alfa * (v/c) ^ beta]`. Aplicado por arco quando presente. |
+| `bpr_beta` | Beta da função BPR | - | Decimal (`float`) | `4.0` | `bpr_beta`, `beta_bpr` | Expoente `beta` da equação de congestionamento BPR. Aplicado por arco quando presente. |
+| `capacidade` | Capacidade por sentido (0 = HCM) | veíc/h | Decimal (`float`) | `0.0` | `capacidade`, `capacity`, `cap`, `capacidade_vph` | Capacidade informada por sentido. A **sentinela 0.0** indica cálculo automático pelo HCM (Cap. 12 ou 15). Se `> 0`, tem precedência sobre o HCM (mantendo o `escopo`). |
+| `tempo_livre` | Tempo de fluxo livre (0 = comprimento ÷ FFS) | min | Decimal (`float`) | `0.0` | `tempo_livre`, `free_flow_time`, `fft`, `t0` | Tempo de viagem em fluxo livre no arco. A **sentinela 0.0** indica cálculo geométrico (`comprimento ÷ vel_livre`). Se `> 0`, tem precedência sobre o cálculo. |
+| `mao_unica` | Mão única (sentido da geometria) | - | Booleano (`bool`) | `False` | `mao_unica`, `oneway`, `one_way`, `sentido_unico` | Se `True`, o trecho gera apenas o arco no sentido de digitalização da geometria (`fw`), omitindo o arco reverso (`bw`). Se `False`, opera em mão dupla gerando `fw` e `bw`. |
+
+---
+
+### 2.1 A Sentinela `0.0` e Parâmetros Informados
+
+Os parâmetros `capacidade` e `tempo_livre` adotam o valor **`0.0` como sentinela explícita** para "calcular automaticamente":
+
+* **Por que `0.0` e não `None`?** A interface do plugin gera dinamicamente controles numéricos (`QDoubleSpinBox`) a partir das especificações de `PARAMS`. O valor `None` não é representável diretamente em um *spinbox* numérico Qt, e um valor positivo arbitrário como padrão sobrescreveria toda a malha caso o usuário não informasse um campo.
+* **Precedência na construção da rede**:
+    * Se `capacidade > 0.0`: a capacidade do arco recebe esse valor exato (com proveniência `oficial` se veio da camada, ou `usuario` se veio da UI), preservando a classificação de `escopo` (`rodoviario` ou `urbano`). Se `capacidade <= 0.0`, aciona o procedimento analítico do HCM 6ª Edição (`segment_capacity`).
+    * Se `tempo_livre > 0.0`: o tempo `t0` recebe o valor informado em minutos. Se `tempo_livre <= 0.0`, calcula `t0 = (comprimento_km / vel_livre_kmh) * 60.0`.
+* **Mão única (`mao_unica`)**:
+    * Quando `mao_unica` resolve para `True` (reconhecendo valores textuais ou numéricos como `True`, `1`, `'sim'`, `'yes'`, `'oneway'`), a rede viária constrói **apenas o arco no sentido direto (`fw`)** e define `arc_bw = None`. Isso garante que malhas já orientadas (como a de Sioux Falls ou bases municipais direcionadas) não tenham sua capacidade artificialmente duplicada por arcos reversos fictícios.
 
 ---
 
 ## 3. Procedimento de Sobrescrita e Mapeamento
 
-### 3.1 Leitura Automática de Campos da Camada (`oficial`)
+### 3.1 Mapeamento Direto por Campo na Interface (Decisão D2)
 
-Ao carregar uma camada viária (seja importada do plugin GISBR ou um arquivo GeoPackage/Shapefile próprio), o Desire Lines inspeciona o esquema de atributos de cada feição.
+No painel **Alocação em rodovias**, na aba **Parâmetros HCM**, cada parâmetro dispõe de um *combobox* (*field:*) que permite selecionar diretamente qualquer coluna da camada viária.
 
-A busca por campos oficiais é feita de forma flexível:
+* **Precedência do mapeamento (D2)**: Quando o usuário seleciona uma coluna no *combobox* de um parâmetro, esse nome de campo é enviado no dicionário `field_map = {param_id: nome_do_campo}` para o método `params.resolve()`.
+* **Identificação oficial**: Qualquer valor lido com sucesso a partir da coluna mapeada é registrado com proveniência **`oficial`**, mesmo que o nome do campo na sua base seja completamente diferente dos candidatos pré-cadastrados (por exemplo, uma coluna chamada `cap_veic_hora` ou `t_zero`).
+* **Fallback gracioso**: Se o campo mapeado contiver valor nulo, vazio ou inválido em determinada feição, o resolvedor busca a lista de candidatos padrão e, se nada for encontrado, aplica o valor de fábrica (`padrao`).
 
-* **Insensível a maiúsculas/minúsculas**: O campo `LARGURA_FAIXA` ou `Largura_Faixa` é reconhecido do mesmo modo que `largura_faixa`.
-* **Busca na lista de candidatos**: O plugin percorre a lista `campos_candidatos` registrada para o parâmetro em [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py). O primeiro campo encontrado na feição que contenha um valor válido (não nulo / não vazio) é adotado com a proveniência `oficial`.
+### 3.2 Leitura Automática por Candidatos (`oficial`)
 
-### 3.2 Sobrescrita Global na Interface (`usuario`)
+Se nenhum campo for selecionado no combo *field:* da interface, o plugin inspeciona automaticamente o esquema da camada em busca dos nomes listados em `campos_candidatos` (tabela acima). A busca é insensível a maiúsculas/minúsculas (`CAPACITY`, `Capacity` e `capacity` são tratados identicamente). O primeiro candidato com dado válido define o parâmetro como `oficial`.
 
-No painel **Alocação em rodovias**, na aba **Parâmetros HCM** ("HCM parameters"), o usuário tem a opção de definir valores globais na interface gráfica para qualquer um dos parâmetros HCM.
+### 3.3 Sobrescrita Global na Interface (`usuario`)
 
-* Quando um valor é especificado no painel da interface, ele possui a maior prioridade e substitui tanto os valores padrão quanto os atributos existentes na camada vetorial.
+O usuário pode digitar ou ajustar um valor global no controle de edição de qualquer parâmetro na interface.
+
+* Valores globais digitados na interface possuem a maior prioridade: eles prevalecem sobre campos mapeados e candidatos existentes na feição.
 * A proveniência gravada no campo `src_*` da camada resultante será marcada como **`usuario`**.
-* Isso permite realizar **análises de sensibilidade** e simulações de cenários hipotéticos (ex.: avaliar o impacto de reduzir a velocidade de fluxo livre de toda a malha para 60 km/h ou alterar o percentual de pesados para 35%).
+* Para os parâmetros com sentinela (`capacidade` e `tempo_livre`), o valor padrão `0.0` sinaliza que não há sobrescrita global ativa, permitindo a leitura da camada ou o cálculo automático.
 
-### 3.3 Valores Padrão Assumidos (`padrao`)
+### 3.4 Valores Padrão Assumidos (`padrao`)
 
-Se um parâmetro não estiver presente na tabela de atributos da camada e o usuário não tiver preenchido uma sobrescrita global na interface, o plugin aplica o valor padrão (*default*) recomendado pelas diretrizes do HCM e do DNIT para rodovias rurais brasileiras.
+Se um parâmetro não possuir sobrescrita do usuário e não for encontrado nem pelo mapeamento de campo nem pelos nomes candidatos, o plugin adota o valor de fábrica do catálogo `PARAMS`.
 
 * A proveniência correspondente será marcada como **`padrao`**.
-* O resumo das proveniências adotadas ao longo de toda a malha é exibido no log ao final da execução dos comandos **Calcular capacidade** (*Compute capacity*) e **Alocar** (*Assign*).
+* Ao término da execução de **Calcular capacidade** ou **Alocar**, a barra de mensagens exibe o resumo de quantos pares (arco, parâmetro) vieram de cada fonte (`oficial`, `usuario`, `padrao`), assegurando total rastreabilidade (Regra D7).

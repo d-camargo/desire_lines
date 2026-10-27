@@ -58,11 +58,11 @@ Possui exatamente os mesmos campos descritos na seção abaixo (Alocação em Ro
 
 ---
 
-## 4. Camada de Alocação em Rodovias Reais (Aba 4 — AoN / MSA)
+## 4. Camada de Alocação em Rodovias Reais (Aba 4 — AoN / MSA / FW)
 
 Gerada após executar a alocação de demanda da matriz OD sobre a malha rodoviária real (SNV/DER) através do comando **Alocar** (*Assign*).
 
-* **Nome padrão da camada:** `alocacao_aon` (para método All-or-Nothing) ou `alocacao_msa` (para método de Equilíbrio MSA).
+* **Nome padrão da camada:** `alocacao_aon` (para All-or-Nothing), `alocacao_msa` (para Equilíbrio MSA) ou `alocacao_fw` (para Equilíbrio Frank-Wolfe).
 * **Tipo de Geometria:** Linha (`LineString`)
 * **Módulo responsável:** `traffic/outputs.py` (`flows_to_layer`)
 
@@ -82,18 +82,18 @@ Gerada após executar a alocação de demanda da matriz OD sobre a malha rodovi�
 | `los` | Texto (`String`) | - | Nível de Serviço (*Level of Service*) operacional do trecho, de `A` a `F`, derivado do indicador `v/c`. |
 | `tempo_h` | Decimal (`Double`) | h | Tempo total de viagem no trecho sob o fluxo alocado, determinado pela função de desempenho BPR (`t = t0 * [1 + alfa * (v/c) ^ beta]`). |
 | `atraso_h` | Decimal (`Double`) | h | Atraso por trecho provocado pelo congestionamento em relação ao tempo em fluxo livre (`tempo_h - t0`). |
-| `metodo` | Texto (`String`) | - | Algoritmo de alocação empregado: `aon` (*All-or-Nothing*) ou `msa` (*Successive Averages Equilibrium*). |
+| `metodo` | Texto (`String`) | - | Algoritmo de alocação empregado: `aon` (*All-or-Nothing*), `msa` (*Successive Averages Equilibrium*) ou `fw` (*Frank-Wolfe Equilibrium*). |
 | `escopo` | Texto (`String`) | - | Classificação do escopo territorial: `rodoviario` (rodovia rural/interurbana com capacidade HCM) ou `urbano` (travessia urbana mantida na rede sem recálculo de capacidade). |
 
 ---
 
 ### Campos de Proveniência dos Parâmetros HCM (`src_*`)
 
-Para atender ao princípio de transparência total dos dados (**Regra D7 — "Nada é assumido em silêncio"**), a camada de saída inclui 15 campos adicionais indicando a proveniência exata de cada parâmetro utilizado no cálculo da capacidade.
+Para atender ao princípio de transparência total dos dados (**Regra D7 — "Nada é assumido em silêncio"**), a camada de saída inclui 18 campos adicionais indicando a proveniência exata de cada parâmetro operacional e de capacidade utilizado no cálculo.
 
 Os campos `src_*` podem assumir um dos três valores possíveis:
 
-* **`oficial`**: O parâmetro foi lido diretamente de um atributo existente na camada de rodovias de entrada.
+* **`oficial`**: O parâmetro foi lido diretamente de um atributo existente na camada de rodovias de entrada (via mapeamento de campo na UI ou busca em candidatos).
 * **`usuario`**: O parâmetro foi informado ou sobrescrito manualmente pelo usuário na interface do plugin.
 * **`padrao`**: O parâmetro não constava na camada de entrada e o plugin aplicou o valor padrão alinhado às diretrizes do DNIT/HCM.
 
@@ -114,12 +114,15 @@ Os campos `src_*` podem assumir um dos três valores possíveis:
 | `src_directional_split` | `directional_split` | Proveniência da distribuição direcional do tráfego (ex.: 50/50, 60/40). |
 | `src_bpr_alpha` | `bpr_alpha` | Proveniência do parâmetro `alfa` da equação de impedância BPR. |
 | `src_bpr_beta` | `bpr_beta` | Proveniência do parâmetro `beta` da equação de impedância BPR. |
+| `src_capacidade` | `capacidade` | Proveniência da capacidade por sentido informada (`oficial`, `usuario` ou `padrao`). |
+| `src_tempo_livre` | `tempo_livre` | Proveniência do tempo de fluxo livre informado (`oficial`, `usuario` ou `padrao`). |
+| `src_mao_unica` | `mao_unica` | Proveniência da indicação de sentido único / mão única (`oficial`, `usuario` ou `padrao`). |
 
 ---
 
 ## 5. Simbologia e Estilo Graduado por v/c
 
-As camadas de saída de alocação em rodovias (`alocacao_aon` e `alocacao_msa`) são configuradas automaticamente com um renderizador de simbologia graduada nativo do QGIS (`QgsGraduatedSymbolRenderer`) aplicado sobre o campo **`vc`**.
+As camadas de saída de alocação em rodovias (`alocacao_aon`, `alocacao_msa` e `alocacao_fw`) são configuradas automaticamente com um renderizador de simbologia graduada nativo do QGIS (`QgsGraduatedSymbolRenderer`) aplicado sobre o campo **`vc`**.
 
 O estilo utiliza uma escala de cores intuitiva de 6 classes (de verde escuro a roxo) acompanhada pelo aumento na espessura das linhas:
 

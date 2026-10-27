@@ -80,19 +80,19 @@ rede, não representa via nenhuma. A âncora é o ponto mais próximo **do link*
 dividido ali). Centroide cuja distância à malha está além do
 *Conector máximo (m)* fica **fora** da alocação, e o plugin diz quantos.
 
-#### Método: AoN ou Equilíbrio MSA + BPR
+#### Método: AoN, Equilíbrio MSA ou Equilíbrio Frank-Wolfe
 
 O campo *Método* ("Method") define o algoritmo de carregamento:
 
 | Método | Como carrega | Quando usar |
 |---|---|---|
 | *Tudo-ou-Nada (sem restrição de capacidade)* ("All-or-Nothing (no capacity restraint)") | Uma passada pelo caminho de menor tempo a **fluxo livre**; todo o fluxo do par vai por esse caminho | Diagnóstico de sobrecarga: onde a demanda excede a capacidade se ninguém desviar |
-| *Equilíbrio MSA + BPR* ("Equilibrium MSA + BPR") | Iterativo: o tempo de cada arco cresce com o carregamento (função **BPR**, `t = t0 · (1 + α·(v/c)^β)`) e a demanda se redistribui pela **média de sucessivas** (MSA) | Estimativa de carregamento com congestionamento realimentado |
+| *Equilíbrio MSA + BPR* ("Equilibrium MSA + BPR") | Iterativo: o tempo de cada arco cresce com o carregamento (função **BPR**, `t = t0 · (1 + α·(v/c)^β)`) e a demanda se redistribui pela **média de sucessivas** (passo rígido $1/k$) | Estimativa de equilíbrio para estudos didáticos ou comparativo com métodos clássicos |
+| *Equilíbrio Frank-Wolfe + BPR* ("Equilibrium Frank-Wolfe + BPR") | Iterativo com passo ótimo: a cada iteração avalia a função de Beckmann e calcula o tamanho de passo ótimo $\lambda$ por **busca linear por bisseção** | **Padrão recomendado**: Equilíbrio do Usuário de Wardrop com rápida convergência a gaps rigorosos |
 
-*Iterações* ("Iterations", padrão 10) e *Tolerância do gap* ("Gap tolerance", padrão 0,01) só valem para o
-MSA — com AoN selecionado, os dois campos ficam desabilitados. O MSA para
-quando o gap cai abaixo da tolerância ou quando as iterações acabam; a
-mensagem final informa o gap alcançado e em quantas iterações.
+*Iterações* ("Iterations", padrão **100**, configurável até 5000) e *Tolerância do gap* ("Gap tolerance", padrão **0,001**) valem para os métodos de equilíbrio (**Frank-Wolfe** e **MSA**) — com Tudo-ou-Nada selecionado, ambos os campos ficam desabilitados. O algoritmo encerra quando o gap atinge a tolerância configurada ou quando se esgota o número de iterações; a mensagem final na barra de mensagens informa o gap alcançado e o número de iterações executadas.
+
+O método selecionado por padrão é o **Equilíbrio Frank-Wolfe + BPR**, pois sua convergência é substancialmente mais rápida que a do MSA, alcançando precisão superior em menos iterações.
 
 !!! warning "Sob AoN, vc > 1 não é equilíbrio — é sobrecarga"
     No AoN a capacidade **nunca** volta para o custo, então nada impede que um
@@ -111,25 +111,39 @@ Ao final da aba *Alocação*, dois botões acionam os processamentos:
   **`capacidade_hcm`**, com `volume = 0`. Serve para conferir a capacidade e a
   proveniência **antes** de gastar tempo com a alocação — e não exige matriz nem
   centroides, só a rede. Arcos cuja capacidade sai **zero ou inválida** são descartados.
-* **Alocar** ("Assign"): executa o processo completo de construção do grafo, leitura da matriz OD e alocação de tráfego, publicando a camada **`alocacao_aon`** ou **`alocacao_msa`**.
+* **Alocar** ("Assign"): executa o processo completo de construção do grafo, leitura da matriz OD e alocação de tráfego, publicando a camada **`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`** (conforme o método escolhido).
 
 ## Aba Parâmetros HCM
 
-A aba **Parâmetros HCM** ("HCM parameters") contém o grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)"), que reúne as configurações operacionais e geométricas para o cálculo de capacidade HCM.
+A aba **Parâmetros HCM** ("HCM parameters") contém o grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)"), que reúne as configurações operacionais e geométricas para o cálculo de capacidade HCM e parâmetros de rede.
 
-Nada é assumido em silêncio: a aba traz uma linha por parâmetro (tipo de segmento,
+Nada é assumido em silêncio: a aba traz uma linha por parâmetro para os 18 parâmetros do sistema (tipo de segmento,
 faixas, terreno, % de veículos pesados, FFS, PHF, largura de faixa e
 acostamento, ultrapassagem proibida, densidade de acessos, divisão direcional,
-alfa e beta do BPR). Cada linha oferece **duas saídas**: um valor global,
-digitado ali, e um campo da camada de rodovias selecionado no combo *field:* ("field:") que vale mais que ele.
+alfa e beta do BPR, capacidade informada, tempo livre e mão única).
 
-A ordem de precedência, por arco e por parâmetro, é:
+Cada linha oferece **duas saídas**: um valor global digitado no controle e um *combobox* *field:* ("field:") para mapear qualquer coluna da camada de rodovias.
+
+### Parâmetros Especiais de Rede e a Sentinela `0`
+
+Três parâmetros permitem incorporar diretamente atributos conhecidos de malhas já calibradas (como redes municipais ou benchmarks tipo Sioux Falls):
+
+* **Capacidade por sentido (0 = HCM)** (`capacidade`): Capacidade por sentido em veíc/h. A sentinela **`0`** indica cálculo automático pelo procedimento do HCM 6ª edição (Cap. 15 pista simples ou Cap. 12 pista dupla/freeway). Qualquer valor **`> 0`** substitui a capacidade do HCM.
+* **Tempo de fluxo livre (0 = comprimento ÷ FFS)** (`tempo_livre`): Tempo em fluxo livre em minutos. A sentinela **`0`** calcula o tempo com base no comprimento geométrico e na velocidade livre (`comprimento ÷ vel_livre`). Qualquer valor **`> 0`** substitui o tempo calculado.
+* **Mão única (sentido da geometria)** (`mao_unica`): Booleano. Se verdadeiro (`True`, `1`, `'sim'`, `'yes'`), gera apenas o arco no sentido da geometria (`fw`), omitindo o reverso (`bw`). Se falso (`False`), gera os dois arcos direcionados (`fw` e `bw`).
+
+### Precedência e Mapeamento de Campos (Decisão D2)
+
+Quando você seleciona uma coluna no combo *field:* de qualquer parâmetro, esse mapeamento é repassado diretamente para a resolução (`field_map`). O valor encontrado na coluna mapeada é adotado com proveniência **`oficial`**.
+
+A ordem de precedência rigorosa por feição e por parâmetro é:
 
 | Precedência | Origem | Registrada como |
 |---|---|---|
-| 1º | Campo da camada de rodovias (o *field:* da linha, quando preenchido) | `oficial` |
-| 2º | Valor global digitado na aba | `usuario` |
-| 3º | Padrão do catálogo do plugin | `padrao` |
+| 1º | Valor global digitado na aba (se diferente de sentinela 0 para capacidade/tempo livre) | `usuario` |
+| 2º | Coluna da camada selecionada no combo *field:* daquela linha | `oficial` |
+| 3º | Colunas com nomes candidatos padrão presentes na feição | `oficial` |
+| 4º | Padrão do catálogo de fábrica do plugin | `padrao` |
 
 !!! note "A proveniência vai para a camada de saída"
     Cada arco carrega um campo `src_<parâmetro>` com `oficial`, `usuario` ou
@@ -141,7 +155,7 @@ A ordem de precedência, por arco e por parâmetro, é:
 ## O resultado
 
 A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*, com nome conforme o método —
-**`alocacao_aon`** ou **`alocacao_msa`** (e `capacidade_hcm` pelo botão **Calcular capacidade**) — e é estilizada por **`vc`** em classes fixas de A a F (verde até
+**`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`** (e `capacidade_hcm` pelo botão **Calcular capacidade**) — e é estilizada por **`vc`** em classes fixas de A a F (verde até
 0,35; roxo grosso acima de 1,00). Campos principais:
 
 | Campo | Significado |
@@ -149,13 +163,13 @@ A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*
 | `arc_id` / `link_id` / `sentido` | Identificação do arco dirigido e do link de origem (`fw`/`bw`) |
 | `tipo` | Classificação do arco: `link` (original intacto), `link_dividido` (dividido para ancorar centróide) ou `conector` |
 | `faixas`, `comp_m`, `vel_livre` | Faixas por sentido, comprimento em metros, velocidade de fluxo livre |
-| `capacidade` | Capacidade HCM, em veíc/h **por sentido** |
+| `capacidade` | Capacidade por sentido em veíc/h (HCM ou informada) |
 | `volume` | Volume alocado no arco |
 | `vc` | `volume / capacidade` |
 | `los` | Nível de serviço **aproximado**, derivado do `vc` (o LOS oficial do HCM usa densidade/velocidade média de viagem) |
 | `tempo_h`, `atraso_h` | Tempo de viagem no arco e atraso sobre o fluxo livre |
-| `metodo`, `escopo` | Método usado (`aon`/`msa`/`capacidade`) e `rodoviario`, `urbano` ou `conector` |
-| `src_*` | Proveniência de cada parâmetro HCM: `oficial`, `usuario` ou `padrao` |
+| `metodo`, `escopo` | Método usado (`fw`/`msa`/`aon`/`capacidade`) e `rodoviario`, `urbano` ou `conector` |
+| `src_*` | Proveniência de cada parâmetro (incluindo `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` ou `padrao` |
 
 A mensagem de sucesso ao final é onde as perdas aparecem: pares alocados,
 número de arcos, resumo de proveniência, contagem de arcos urbanos, gap,

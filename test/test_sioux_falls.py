@@ -20,6 +20,8 @@ from test.sioux_falls import (
     init_processing,
     load_nodes,
     load_links,
+    load_trips,
+    load_reference_flow,
     road_layer,
     od_all_pairs,
 )
@@ -94,6 +96,55 @@ class TestSiouxFallsFixture(unittest.TestCase):
             self.assertAlmostEqual(pts[0].y(), expected_u[1], places=6)
             self.assertAlmostEqual(pts[1].x(), expected_v[0], places=6)
             self.assertAlmostEqual(pts[1].y(), expected_v[1], places=6)
+
+    def test_road_layer_tntp_attrs(self):
+        """road_layer(tntp_attrs=True) inclui campos capacity, free_flow_time e oneway (D6)."""
+        layer = road_layer(tntp_attrs=True)
+        self.assertTrue(layer.isValid())
+        self.assertEqual(layer.featureCount(), 76)
+
+        field_names = [f.name() for f in layer.fields()]
+        self.assertIn('capacity', field_names)
+        self.assertIn('free_flow_time', field_names)
+        self.assertIn('oneway', field_names)
+
+        # Default road_layer(tntp_attrs=False) não inclui esses campos
+        layer_default = road_layer(tntp_attrs=False)
+        default_fields = [f.name() for f in layer_default.fields()]
+        self.assertNotIn('capacity', default_fields)
+        self.assertNotIn('free_flow_time', default_fields)
+        self.assertNotIn('oneway', default_fields)
+
+        for feat in layer.getFeatures():
+            self.assertEqual(feat['oneway'], 1)
+            self.assertGreater(float(feat['capacity']), 0.0)
+            self.assertGreater(float(feat['free_flow_time']), 0.0)
+
+    def test_load_trips(self):
+        """trips.csv contém 528 pares OD com demanda > 0 e total de 360 600 viagens (D6)."""
+        trips = load_trips()
+        self.assertEqual(len(trips), 528)
+        total_demand = sum(dem for _, _, dem in trips)
+        self.assertAlmostEqual(total_demand, 360600.0, places=4)
+
+        nodes = set(load_nodes().keys())
+        for o, d, dem in trips:
+            self.assertIn(o, nodes)
+            self.assertIn(d, nodes)
+            self.assertNotEqual(o, d)
+            self.assertGreater(dem, 0.0)
+
+    def test_load_reference_flow(self):
+        """flow_ue.csv contém 76 fluxos de referência e todo par existe em links.csv (D6)."""
+        flows = load_reference_flow()
+        self.assertEqual(len(flows), 76)
+
+        links = set(load_links())
+        for pair in flows:
+            self.assertIn(pair, links)
+            vol, cost = flows[pair]
+            self.assertGreater(vol, 0.0)
+            self.assertGreater(cost, 0.0)
 
     def test_od_all_pairs(self):
         """od_all_pairs gera os 24x23 = 552 pares OD com demanda unitária."""
@@ -329,4 +380,104 @@ class TestSiouxFallsFixture(unittest.TestCase):
         out_layer, stats, panel, _zone_node = self._run_sioux_falls_assignment(
             'msa', max_iter=20)
         self._assert_d6_layer(out_layer, stats, panel, panel.traffic_anchors)
+
+    def test_end_to_end_reference_ue(self):
+        """Regressão ponta a ponta Sioux Falls contra a referência UE pela porta do painel (D7)."""
+        init_processing()
+        panel = TrafficAssignmentPanel(None)
+        layer = road_layer('EPSG:4326', tntp_attrs=True)
+        nodes_4326 = load_nodes()
+        zone_keys = list(range(1, 25))
+        centroids = [nodes_4326[k] for k in zone_keys]
+        centroids_crs = QgsCoordinateReferenceSystem('EPSG:4326')
+
+        # Mapeia nos combos do painel capacidade->capacity, tempo_livre->free_flow_time, mao_unica->oneway
+        for key, field_name in [
+            ('capacidade', 'capacity'),
+            ('tempo_livre', 'free_flow_time'),
+            ('mao_unica', 'oneway'),
+        ]:
+            _editor, combo = panel._traffic_param_widgets[key]
+            combo.setLayer(layer)
+            combo.setField(field_name)
+
+        self.assertEqual(
+            panel._traffic_field_map(),
+            {
+                'capacidade': 'capacity',
+                'tempo_livre': 'free_flow_time',
+                'mao_unica': 'oneway',
+            },
+        )
+
+        g, arcs, zone_node, unconnected = panel.build_traffic_network(
+            road_layer=layer,
+            centroids=centroids,
+            zone_keys=zone_keys,
+            centroids_crs=centroids_crs,
+            clip_buffer_m=5000,
+            overrides=panel._traffic_overrides(),
+            field_map=panel._traffic_field_map(),
+        )
+        self.assertEqual(unconnected, [])
+
+        mesh_arcs = [a for a in arcs if a.link_id != 'conector']
+        self.assertEqual(len(mesh_arcs), 76)
+
+        trips = load_trips()
+        self.assertEqual(len(trips), 528)
+        od_mapped = [(zone_node[o], zone_node[d], demand) for o, d, demand in trips]
+
+        flows, _history, stats = assignment.assign(
+            g,
+            arcs=arcs,
+            od_pairs=od_mapped,
+            method='fw',
+            max_iter=300,
+            gap_tol=1e-9,
+        )
+        self.assertEqual(stats['method'], 'fw')
+        self.assertEqual(stats['allocated'], 528)
+        self.assertEqual(stats['unreachable'], 0)
+
+        feat_map = {
+            f.id(): (int(f['init_node']), int(f['term_node']))
+            for f in layer.getFeatures()
+        }
+        arc_flows = {}
+        for i, arc in enumerate(arcs):
+            if arc.link_id == 'conector':
+                continue
+            pair = feat_map[arc.link_id]
+            arc_flows[pair] = arc_flows.get(pair, 0.0) + flows[i]
+
+        self.assertEqual(len(arc_flows), 76)
+
+        ref_flows = load_reference_flow()
+        tstt_ref = sum(vol * cost for vol, cost in ref_flows.values())
+        self.assertAlmostEqual(tstt_ref, 7480225.34, places=1)
+
+        errors = []
+        tstt_fw = 0.0
+        for i, arc in enumerate(arcs):
+            if arc.link_id == 'conector':
+                continue
+            pair = feat_map[arc.link_id]
+            vol_ref, _ = ref_flows[pair]
+            v = arc_flows[pair]
+            t = assignment.bpr_time(arc.t0, v, arc.capacity, alpha=0.15, beta=4.0)
+            tstt_fw += v * t
+            err = abs(v - vol_ref) / vol_ref
+            errors.append(err)
+
+        max_err = max(errors)
+        mean_err = sum(errors) / len(errors)
+        tstt_diff = abs(tstt_fw - tstt_ref) / tstt_ref
+
+        # Asserções de D7 para FW 300 it:
+        # erro máx. <= 2 %, médio <= 0,5 %, TSTT a <= 0,5 % de 7 480 225
+        self.assertLessEqual(max_err, 0.02, f"Erro máx FW ({max_err*100:.3f}%) excedeu 2.0%")
+        self.assertLessEqual(mean_err, 0.005, f"Erro médio FW ({mean_err*100:.3f}%) excedeu 0.5%")
+        self.assertLessEqual(tstt_diff, 0.005, f"Diferença TSTT FW ({tstt_diff*100:.3f}%) excedeu 0.5%")
+
 

@@ -457,6 +457,110 @@ class TestNetworkModule(unittest.TestCase):
             coords_crs_mismatch((0, 0, 500, 300), False)
         )
 
+    def test_build_directed_arcs_capacidade_and_scope(self):
+        """Capacidade > 0 substitui HCM e mantém scope; 0 cai no HCM (D1)."""
+        # Rural com capacidade informada > 0
+        fw, bw = build_directed_arcs(
+            link_id=1, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'capacidade': 2500.0})
+        self.assertEqual(fw.capacity, 2500.0)
+        self.assertEqual(bw.capacity, 2500.0)
+        self.assertEqual(fw.scope, 'rodoviario')
+        self.assertEqual(bw.scope, 'rodoviario')
+
+        # Trecho urbano com capacidade informada > 0 mantém scope 'urbano'
+        fw_u, bw_u = build_directed_arcs(
+            link_id=2, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'capacidade': 3000.0, 'urbano': True})
+        self.assertEqual(fw_u.capacity, 3000.0)
+        self.assertEqual(fw_u.scope, 'urbano')
+        self.assertEqual(bw_u.capacity, 3000.0)
+        self.assertEqual(bw_u.scope, 'urbano')
+
+        # Capacidade = 0 cai no HCM
+        fw_0, _ = build_directed_arcs(
+            link_id=3, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'capacidade': 0.0})
+        fw_def, _ = build_directed_arcs(
+            link_id=4, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={})
+        self.assertEqual(fw_0.capacity, fw_def.capacity)
+        self.assertGreater(fw_0.capacity, 0.0)
+        self.assertEqual(fw_0.scope, 'rodoviario')
+
+    def test_build_directed_arcs_tempo_livre(self):
+        """tempo_livre > 0 vira t0 exato; 0 cai em comprimento ÷ vel_livre (D1)."""
+        # tempo_livre > 0
+        fw, bw = build_directed_arcs(
+            link_id=1, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'tempo_livre': 4.5, 'vel_livre': 60.0})
+        self.assertAlmostEqual(fw.t0, 4.5)
+        self.assertAlmostEqual(bw.t0, 4.5)
+
+        # tempo_livre = 0 calcula via comprimento ÷ vel_livre (1 km a 60 km/h = 1.0 min)
+        fw_0, _ = build_directed_arcs(
+            link_id=2, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'tempo_livre': 0.0, 'vel_livre': 60.0})
+        self.assertAlmostEqual(fw_0.t0, 1.0)
+
+    def test_build_directed_arcs_mao_unica_and_build_network(self):
+        """mao_unica=True gera só fw; build_network não anexa None (D1)."""
+        fw, bw = build_directed_arcs(
+            link_id=1, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'mao_unica': True})
+        self.assertIsNotNone(fw)
+        self.assertIsNone(bw)
+        self.assertEqual(fw.arc_id, (1, 'fw'))
+        self.assertTrue(fw.forward)
+
+        # build_network não anexa None
+        features = [
+            {'id': 1, 'geometry': [(0.0, 0.0), (1000.0, 0.0)], 'mao_unica': True},
+            {'id': 2, 'geometry': [(1000.0, 0.0), (2000.0, 0.0)], 'mao_unica': False},
+        ]
+        arcs = build_network(features)
+        self.assertEqual(len(arcs), 3)
+        self.assertNotIn(None, arcs)
+        self.assertEqual([a.arc_id for a in arcs], [(1, 'fw'), (2, 'fw'), (2, 'bw')])
+
+    def test_anchor_centroids_oneway_split_and_aon_routing(self):
+        """anchor_centroids com link só-fw dividido no meio gera só pedaços fw
+        e o AoN atravessa no sentido certo e não no oposto (D1)."""
+        fw, bw = build_directed_arcs(
+            link_id=1, points=[(0.0, 0.0), (1000.0, 0.0)],
+            feature={'mao_unica': True, 'vel_livre': 100.0})
+        self.assertIsNone(bw)
+
+        # Link dividido em 3 pedaços por centróides projetados em x=300 e x=700
+        net_arcs, connector_arcs, zone_node, report = anchor_centroids(
+            [fw], [(300.0, -100.0), (700.0, 100.0)], max_dist_m=5000.0)
+
+        self.assertEqual(len(net_arcs), 3)
+        self.assertTrue(all(a.forward for a in net_arcs))
+        self.assertEqual([a.arc_id for a in net_arcs],
+                         [(1, 'fw', 0), (1, 'fw', 1), (1, 'fw', 2)])
+
+        all_arcs = net_arcs + connector_arcs
+        g = graph.build_graph(all_arcs)
+
+        # Sentido direto (0 -> 1): deve alocar com sucesso pelo pedaço (1, 'fw', 1)
+        flows_fwd, _hist, stats_fwd = assignment.assign(
+            g, all_arcs, od_pairs=[(0, 1, 100.0)], method='aon',
+            zone_node=zone_node)
+        self.assertEqual(stats_fwd['allocated'], 1)
+        self.assertEqual(stats_fwd['unreachable'], 0)
+        idx_fw1 = g.index_of((1, 'fw', 1))
+        self.assertEqual(flows_fwd[idx_fw1], 100.0)
+
+        # Sentido oposto (1 -> 0): sem caminho reverso numa via de mão única
+        flows_rev, _hist, stats_rev = assignment.assign(
+            g, all_arcs, od_pairs=[(1, 0, 100.0)], method='aon',
+            zone_node=zone_node)
+        self.assertEqual(stats_rev['allocated'], 0)
+        self.assertEqual(stats_rev['unreachable'], 1)
+        self.assertEqual(flows_rev[idx_fw1], 0.0)
+        self.assertEqual(sum(flows_rev), 0.0)
+
 
 if __name__ == '__main__':
     unittest.main()

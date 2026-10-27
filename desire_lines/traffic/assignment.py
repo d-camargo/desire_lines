@@ -1,7 +1,7 @@
 # coding=utf-8
-"""Módulo de alocação de tráfego em rodovias (D4, D8, D10).
+"""Módulo de alocação de tráfego em rodovias (D3, D4, D8, D10).
 
-Implementa as funções de alocação de tráfego (BPR e AoN).
+Implementa as funções de alocação de tráfego (BPR, AoN, MSA e Frank-Wolfe).
 """
 
 
@@ -35,6 +35,42 @@ def bpr_time(t0, v, c, alpha=0.15, beta=4.0):
         c = 1e-6
 
     return t0 * (1.0 + alpha * ((v / c) ** beta))
+
+
+def _bpr_coeffs(arcs, alpha=0.15, beta=4.0):
+    """Extrai os coeficientes (alpha, beta) do BPR por arco (D4).
+
+    Para cada arco, usa `arc.params.get('bpr_alpha')` e `'bpr_beta'` quando presentes,
+    senão recorre aos argumentos `alpha` e `beta` (arcos com `params={}` usam o global).
+
+    Args:
+        arcs (iterable): Coleção de arcos (`network.Arc` ou compatíveis).
+        alpha (float): Valor global padrão de alpha (padrão 0.15).
+        beta (float): Valor global padrão de beta (padrão 4.0).
+
+    Returns:
+        tuple: (alphas, betas) como listas de floats na mesma ordem de `arcs`.
+    """
+    g_alpha = 0.15 if alpha is None else float(alpha)
+    g_beta = 4.0 if beta is None else float(beta)
+
+    alphas = []
+    betas = []
+    for arc in arcs:
+        params = getattr(arc, 'params', None) or {}
+        a = params.get('bpr_alpha')
+        b = params.get('bpr_beta')
+        try:
+            a_val = float(a) if a is not None else g_alpha
+        except (ValueError, TypeError):
+            a_val = g_alpha
+        try:
+            b_val = float(b) if b is not None else g_beta
+        except (ValueError, TypeError):
+            b_val = g_beta
+        alphas.append(a_val)
+        betas.append(b_val)
+    return alphas, betas
 
 
 def aon_load(graph, custos=None, od_pairs=None, zone_node=None):
@@ -247,6 +283,7 @@ def assign_msa(
     num_arcs = len(arcs)
     t0_costs = [float(arc.t0) for arc in arcs]
     capacities = [float(arc.capacity) for arc in arcs]
+    alphas, betas = _bpr_coeffs(arcs, alpha=alpha, beta=beta)
 
     # Iteração 1: AoN em t0
     v_current, last_stats = aon_load(
@@ -260,7 +297,7 @@ def assign_msa(
     for k in range(2, max_iter + 1):
         # 1. Calcula tempos correntes BPR com v_current
         current_times = [
-            bpr_time(t0_costs[i], v_current[i], capacities[i], alpha=alpha, beta=beta)
+            bpr_time(t0_costs[i], v_current[i], capacities[i], alpha=alphas[i], beta=betas[i])
             for i in range(num_arcs)
         ]
 
@@ -305,7 +342,157 @@ def assign_msa(
     return v_current, historico, stats
 
 
-VALID_METHODS = ('aon', 'msa')
+def _beckmann_derivative(lam, v, y, t0_costs, capacities, alphas, betas):
+    """Calcula a derivada da função de Beckmann ao longo da direção (y - v).
+
+    d/dλ Σ ∫_0^{v_a + λ(y_a - v_a)} t_a(w) dw = Σ t_a(v_a + λ(y_a - v_a)) · (y_a - v_a)
+
+    `alphas` e `betas` são sequências de coeficientes BPR indexadas por arco.
+    """
+    total = 0.0
+    for i in range(len(v)):
+        diff = y[i] - v[i]
+        if diff == 0.0:
+            continue
+        v_lam = v[i] + lam * diff
+        a = alphas[i]
+        b = betas[i]
+        t_lam = bpr_time(t0_costs[i], v_lam, capacities[i], alpha=a, beta=b)
+        total += t_lam * diff
+    return total
+
+
+def _line_search_fw(v, y, t0_costs, capacities, alphas, betas, max_evals=30):
+    """Busca linear por bisseção de λ ∈ [0, 1] na derivada da função de Beckmann (D3).
+
+    Como o custo de viagem BPR é não-decrescente em relação ao volume, a derivada
+    é monotonicamente não-decrescente em λ.
+    """
+    d0 = _beckmann_derivative(0.0, v, y, t0_costs, capacities, alphas=alphas, betas=betas)
+    if d0 >= 0.0:
+        return 0.0
+    d1 = _beckmann_derivative(1.0, v, y, t0_costs, capacities, alphas=alphas, betas=betas)
+    if d1 <= 0.0:
+        return 1.0
+
+    low = 0.0
+    high = 1.0
+    for _ in range(max_evals):
+        mid = (low + high) * 0.5
+        d_mid = _beckmann_derivative(mid, v, y, t0_costs, capacities, alphas=alphas, betas=betas)
+        if d_mid < 0.0:
+            low = mid
+        else:
+            high = mid
+    return (low + high) * 0.5
+
+
+def assign_fw(
+    graph,
+    arcs=None,
+    od_pairs=None,
+    zone_node=None,
+    max_iter=10,
+    gap_tol=0.01,
+    alpha=0.15,
+    beta=4.0,
+    progress=None,
+):
+    """Executa a alocação de Equilíbrio via Frank-Wolfe (FW) + BPR (D3).
+
+    Iteração: AoN em t0 -> a cada k: tempos BPR em v, AoN auxiliar y, gap relativo
+    (mesma fórmula do MSA), para se 0 <= gap <= gap_tol; senão busca linear por
+    bisseção de λ ∈ [0, 1] na derivada da função de Beckmann (30 bisseções),
+    v ← v + λ(y - v).
+
+    Args:
+        graph (Graph): Grafo direcionado.
+        arcs (list | None): Lista de arcos na mesma ordem do grafo. Se None, usa `graph.arcs`.
+        od_pairs (iterable | None): Pares OD com demandas.
+        zone_node (dict | callable | None): Mapeamento de centróides para nós da rede.
+        max_iter (int): Número máximo de iterações (padrão 10).
+        gap_tol (float): Tolerância de parada para o gap relativo (padrão 0.01).
+        alpha (float): Parâmetro alpha do BPR (padrão 0.15).
+        beta (float): Parâmetro beta do BPR (padrão 4.0).
+        progress (callable | None): Se informado, chamado como `progress(iter, max_iter)`
+            a cada iteração.
+
+    Returns:
+        tuple: (flows, historico, stats)
+            - flows (list): Lista de floats com os fluxos equilibrados por arco.
+            - historico (list): Dicionários por iteração com {'iter', 'max_diff', 'gap'}.
+            - stats (dict): Estatísticas da última iteração.
+    """
+    if arcs is None:
+        arcs = graph.arcs
+
+    num_arcs = len(arcs)
+    t0_costs = [float(arc.t0) for arc in arcs]
+    capacities = [float(arc.capacity) for arc in arcs]
+    alphas, betas = _bpr_coeffs(arcs, alpha=alpha, beta=beta)
+
+    # Iteração 1: AoN em t0
+    v_current, last_stats = aon_load(
+        graph, custos=t0_costs, od_pairs=od_pairs, zone_node=zone_node
+    )
+    historico = [{'iter': 1, 'max_diff': 0.0, 'gap': None}]
+
+    if callable(progress):
+        progress(1, max_iter)
+
+    for k in range(2, max_iter + 1):
+        # 1. Calcula tempos correntes BPR com v_current
+        current_times = [
+            bpr_time(t0_costs[i], v_current[i], capacities[i], alpha=alphas[i], beta=betas[i])
+            for i in range(num_arcs)
+        ]
+
+        # 2. Carrega fluxo auxiliar (AoN) sobre os tempos correntes
+        f_aux, last_stats = aon_load(
+            graph, custos=current_times, od_pairs=od_pairs, zone_node=zone_node
+        )
+
+        # 3. Gap relativo (mesma fórmula do MSA)
+        sum_v_t = sum(v_current[i] * current_times[i] for i in range(num_arcs))
+        sum_f_t = sum(f_aux[i] * current_times[i] for i in range(num_arcs))
+        gap = (sum_v_t - sum_f_t) / sum_v_t if sum_v_t > 0.0 else 0.0
+
+        if gap is not None and 0.0 <= gap <= gap_tol:
+            historico.append({'iter': k, 'max_diff': 0.0, 'gap': gap})
+            if callable(progress):
+                progress(k, max_iter)
+            break
+
+        # 4. Busca linear por bisseção de lambda em [0, 1] (30 bisseções)
+        lam = _line_search_fw(
+            v_current, f_aux, t0_costs, capacities, alphas=alphas, betas=betas, max_evals=30
+        )
+        v_next = [
+            v_current[i] + lam * (f_aux[i] - v_current[i])
+            for i in range(num_arcs)
+        ]
+
+        max_diff = max(
+            (abs(v_next[i] - v_current[i]) for i in range(num_arcs)), default=0.0
+        )
+        historico.append({'iter': k, 'max_diff': max_diff, 'gap': gap})
+
+        v_current = v_next
+
+        if callable(progress):
+            progress(k, max_iter)
+
+    stats = dict(last_stats)
+    stats['gap'] = historico[-1]['gap']
+    stats['method'] = 'fw'
+    stats['metodo'] = 'fw'
+    stats['iterations'] = len(historico)
+    stats['iteracoes'] = len(historico)
+
+    return v_current, historico, stats
+
+
+VALID_METHODS = ('aon', 'msa', 'fw')
 
 
 def assign(
@@ -322,7 +509,7 @@ def assign(
 ):
     """Ponto de entrada único para alocação de tráfego na rede (D10).
 
-    Despacha para `assign_aon` ou `assign_msa` conforme `method`, mas os dois
+    Despacha para `assign_aon`, `assign_msa` ou `assign_fw` conforme `method`, mas os três
     devolvem sempre a mesma tripla `(fluxos, historico, stats)` — é seguro
     trocar de método sem mudar o código que consome o resultado.
 
@@ -330,12 +517,12 @@ def assign(
         graph (Graph): Grafo direcionado.
         arcs (list | None): Lista de arcos na mesma ordem do grafo. Se None, usa `graph.arcs`.
         od_pairs (iterable | None): Pares OD com demandas.
-        method (str): Método de alocação, um de `VALID_METHODS` ('aon' ou 'msa'). Padrão 'msa'.
+        method (str): Método de alocação, um de `VALID_METHODS` ('aon', 'msa' ou 'fw'). Padrão 'msa'.
         zone_node (dict | callable | None): Mapeamento de centróides para nós da rede.
-        max_iter (int): Número máximo de iterações (para MSA; ignorado no AoN).
-        gap_tol (float): Tolerância de parada do gap (para MSA; ignorado no AoN).
-        alpha (float): Parâmetro alpha do BPR (para MSA; ignorado no AoN).
-        beta (float): Parâmetro beta do BPR (para MSA; ignorado no AoN).
+        max_iter (int): Número máximo de iterações (para MSA e FW; ignorado no AoN).
+        gap_tol (float): Tolerância de parada do gap (para MSA e FW; ignorado no AoN).
+        alpha (float): Parâmetro alpha do BPR (para MSA e FW; ignorado no AoN).
+        beta (float): Parâmetro beta do BPR (para MSA e FW; ignorado no AoN).
         progress (callable | None): Se informado, chamado como `progress(iter, max_iter)`.
 
     Returns:
@@ -355,6 +542,19 @@ def assign(
     if method_norm == 'aon':
         return assign_aon(graph, arcs=arcs, od_pairs=od_pairs, zone_node=zone_node, progress=progress)
 
+    if method_norm == 'fw':
+        return assign_fw(
+            graph,
+            arcs=arcs,
+            od_pairs=od_pairs,
+            zone_node=zone_node,
+            max_iter=max_iter,
+            gap_tol=gap_tol,
+            alpha=alpha,
+            beta=beta,
+            progress=progress,
+        )
+
     return assign_msa(
         graph,
         arcs=arcs,
@@ -368,5 +568,13 @@ def assign(
     )
 
 
-__all__ = ['bpr_time', 'aon_load', 'assign_aon', 'assign_msa', 'assign', 'VALID_METHODS']
+__all__ = [
+    'bpr_time',
+    'aon_load',
+    'assign_aon',
+    'assign_msa',
+    'assign_fw',
+    'assign',
+    'VALID_METHODS',
+]
 

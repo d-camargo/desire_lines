@@ -8,7 +8,7 @@ qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.6.2
+version=0.7.0
 author=Diego Camargo
 email=dg.camargo@proton.me
 
@@ -22,6 +22,13 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.7.0
+    - Frank-Wolfe equilibrium traffic assignment method with exact line search.
+    - Highway layer parameters: capacity, free-flow time, and one-way direction read directly from layer attributes (overriding HCM calculation).
+    - Mapped fields in the traffic panel are properly resolved (previously fell back silently to default).
+    - Link-level BPR alpha and beta parameters applied per arc.
+    - Updated convergence defaults to 100 iterations and 0.001 relative gap.
+    - End-to-end benchmark regression validation against Sioux Falls user equilibrium reference dataset.
     0.6.2
     - Fix: highway assignment drew connections that do not exist in the network where network nodes are close together. Each centroid is now anchored to the nearest point of the nearest link (the link is split there) instead of the nearest node, and the connector carries the zone's trips.
     - Warnings for long connectors, centroids sharing a node or link, ambiguous anchoring and the zones left unconnected.

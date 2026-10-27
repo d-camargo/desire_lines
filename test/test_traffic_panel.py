@@ -103,8 +103,18 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertFalse(self.dialog.taRunCapacity.isEnabled())
         self.assertFalse(self.dialog.taRunAssign.isEnabled())
 
+    def test_default_method_is_fw_and_enables_iteration_fields(self):
+        """Painel novo vem com 'fw' selecionado e iter/gap habilitados (D5)."""
+        self.assertEqual(self.dialog.taMethod.currentIndex(), 2)
+        self.assertEqual(self.dialog._traffic_method(), 'fw')
+        self.assertTrue(self.dialog.taMaxIter.isEnabled())
+        self.assertTrue(self.dialog.taGapTol.isEnabled())
+        self.assertEqual(self.dialog.taMaxIter.value(), 100)
+        self.assertEqual(self.dialog.taMaxIter.maximum(), 5000)
+        self.assertAlmostEqual(self.dialog.taGapTol.value(), 0.001)
+
     def test_aon_disables_iteration_fields(self):
-        """Switching the method combo to AoN greys out iterations/gap (D10)."""
+        """Switching the method combo to AoN greys out iterations/gap (D5, D10)."""
         self.dialog.taMethod.setCurrentIndex(1)          # MSA
         self.assertEqual(self.dialog._traffic_method(), 'msa')
         self.assertTrue(self.dialog.taMaxIter.isEnabled())
@@ -113,6 +123,10 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(self.dialog._traffic_method(), 'aon')
         self.assertFalse(self.dialog.taMaxIter.isEnabled())
         self.assertFalse(self.dialog.taGapTol.isEnabled())
+        self.dialog.taMethod.setCurrentIndex(2)          # FW
+        self.assertEqual(self.dialog._traffic_method(), 'fw')
+        self.assertTrue(self.dialog.taMaxIter.isEnabled())
+        self.assertTrue(self.dialog.taGapTol.isEnabled())
 
     def test_gisbr_warning_shown_when_missing(self):
         """The GisBR warning is visible and the download option is off (D6)."""
@@ -606,6 +620,31 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertNotEqual(ret, (None, [], {}, []))
         if self.dialog.last_message is not None:
             self.assertNotEqual(self.dialog.last_message[0], 'critical')
+
+    def test_d2_mapped_capacity_field_reaches_the_arcs(self):
+        """Campo `cap_x` mapeado no combo de capacidade chega aos arcos (D2)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        layer = QgsVectorLayer('LineString?crs=EPSG:32614&field=cap_x:double',
+                               'roads', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY(
+            [QgsPointXY(700000.0, 4830000.0), QgsPointXY(700100.0, 4830000.0)]))
+        feat.setAttribute('cap_x', 1234.0)
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+
+        _editor, field_combo = self.dialog._traffic_param_widgets['capacidade']
+        field_combo.setLayer(layer)
+        field_combo.setField('cap_x')
+        self.assertEqual(self.dialog._traffic_field_map(), {'capacidade': 'cap_x'})
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=layer, overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map())
+        self.assertEqual(len(arcs), 2)
+        for arc in arcs:
+            self.assertEqual(arc.capacity, 1234.0)
+            self.assertEqual(arc.sources['capacidade'], 'oficial')
 
 
 if __name__ == "__main__":

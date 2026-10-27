@@ -122,6 +122,30 @@ PARAMS = {
         'default': 4.0,
         'campos_candidatos': ['bpr_beta', 'beta_bpr'],
     },
+    'capacidade': {
+        'id': 'capacidade',
+        'rotulo': 'Capacidade por sentido (0 = HCM)',
+        'unidade': 'veíc/h',
+        'tipo': float,
+        'default': 0.0,
+        'campos_candidatos': ['capacidade', 'capacity', 'cap', 'capacidade_vph'],
+    },
+    'tempo_livre': {
+        'id': 'tempo_livre',
+        'rotulo': 'Tempo de fluxo livre (0 = comprimento ÷ FFS)',
+        'unidade': 'min',
+        'tipo': float,
+        'default': 0.0,
+        'campos_candidatos': ['tempo_livre', 'free_flow_time', 'fft', 't0'],
+    },
+    'mao_unica': {
+        'id': 'mao_unica',
+        'rotulo': 'Mão única (sentido da geometria)',
+        'unidade': '',
+        'tipo': bool,
+        'default': False,
+        'campos_candidatos': ['mao_unica', 'oneway', 'one_way', 'sentido_unico'],
+    },
 }
 
 
@@ -131,9 +155,9 @@ def _coerce_value(raw_val, target_type):
         if isinstance(raw_val, bool):
             return raw_val
         s = str(raw_val).strip().lower()
-        if s in ('true', '1', 'sim', 's', 'yes', 'y', 'pavimentado', 'urbano'):
+        if s in ('true', '1', 'sim', 's', 'yes', 'y', 't', 'pavimentado', 'urbano'):
             return True
-        if s in ('false', '0', 'nao', 'não', 'n', 'no', 'rural', 'nao pavimentado'):
+        if s in ('false', '0', 'nao', 'não', 'n', 'no', 'f', 'rural', 'nao pavimentado'):
             return False
         return bool(raw_val)
     if target_type == int:
@@ -199,18 +223,24 @@ def _get_attribute_from_feature(feature, candidates):
     return None, False
 
 
-def resolve(feature=None, overrides=None):
+def resolve(feature=None, overrides=None, field_map=None):
     """Resolve os valores e origens dos parâmetros para uma feição.
+
+    Precedência (D2): override do usuário → campo de ``field_map`` →
+    candidatos → padrão. Campo mapeado vazio/NULL cai para candidatos.
 
     Args:
         feature: dict ou QgsFeature da rodovia (ou None).
         overrides: dict de parâmetro -> valor sobrescrito pelo usuário (ou None).
+        field_map: dict de parâmetro -> nome do campo mapeado na camada (ou None).
 
     Returns:
         tuple: (valores, origens) onde origens[p] em {'oficial', 'padrao', 'usuario'}.
     """
     if overrides is None:
         overrides = {}
+    if field_map is None:
+        field_map = {}
 
     valores = {}
     origens = {}
@@ -225,7 +255,16 @@ def resolve(feature=None, overrides=None):
             except (ValueError, TypeError):
                 pass
 
-        # 2. Dado oficial na feição
+        # 2. Dado oficial na feição: campo mapeado (D2), senão candidatos
+        if field_map.get(param_id):
+            val, found = _get_attribute_from_feature(feature, [field_map[param_id]])
+            if found:
+                try:
+                    valores[param_id] = _coerce_value(val, spec['tipo'])
+                    origens[param_id] = 'oficial'
+                    continue
+                except (ValueError, TypeError):
+                    pass
         val, found = _get_attribute_from_feature(feature, spec['campos_candidatos'])
         if found:
             try:

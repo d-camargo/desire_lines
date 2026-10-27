@@ -231,6 +231,9 @@
             </item>
             <item row="5" column="1" colspan="3">
              <widget class="QComboBox" name="taMethod">
+              <property name="currentIndex">
+               <number>2</number>
+              </property>
               <item>
                <property name="text">
                 <string>All-or-Nothing (no capacity restraint)</string>
@@ -239,6 +242,11 @@
               <item>
                <property name="text">
                 <string>Equilibrium MSA + BPR</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Equilibrium Frank-Wolfe + BPR</string>
                </property>
               </item>
              </widget>
@@ -256,10 +264,10 @@
                <number>1</number>
               </property>
               <property name="maximum">
-               <number>500</number>
+               <number>5000</number>
               </property>
               <property name="value">
-               <number>10</number>
+               <number>100</number>
               </property>
              </widget>
             </item>
@@ -285,7 +293,7 @@
                <double>0.005000000000000</double>
               </property>
               <property name="value">
-               <double>0.010000000000000</double>
+               <double>0.001000000000000</double>
               </property>
              </widget>
             </item>

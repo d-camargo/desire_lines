@@ -184,8 +184,9 @@ def calculate_free_flow_time(length_m, ffs_kmh):
     return (length_km / speed) * 60.0
 
 
-def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=None, precision=3):
-    """Constrói os dois arcos direcionados (direto e reverso) para um link rodoviário (D5).
+def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=None, precision=3,
+                        field_map=None):
+    """Constrói os arcos direcionados (1 ou 2 arcos por link) para um link rodoviário (D1, D5).
 
     Args:
         link_id (any): Identificador único do link.
@@ -194,9 +195,10 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
         overrides (dict | None): Parâmetros sobrescritos pelo usuário.
         length_m (float | None): Comprimento em metros (se None, calculado dos pontos).
         precision (int): Precisão do snap de nós.
+        field_map (dict | None): Parâmetro -> nome do campo mapeado na camada (D2).
 
     Returns:
-        tuple: (arc_fw, arc_bw) com os arcos direto e reverso.
+        tuple: (arc_fw, arc_bw) com os arcos direto e reverso (arc_bw é None quando mão única).
     """
     if not points or len(points) < 2:
         raise ValueError(f"Link {link_id} não possui geometria válida com ao menos 2 pontos.")
@@ -204,10 +206,23 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
     if length_m is None:
         length_m = calculate_length_m(points)
 
-    valores, origens = resolve(feature=feature, overrides=overrides)
-    cap, scope = segment_capacity(valores)
+    valores, origens = resolve(feature=feature, overrides=overrides, field_map=field_map)
+    cap_hcm, scope = segment_capacity(valores)
+
+    cap_inf = valores.get('capacidade', 0.0)
+    try:
+        cap_val = float(cap_inf) if cap_inf is not None else 0.0
+    except (TypeError, ValueError):
+        cap_val = 0.0
+    cap = cap_val if cap_val > 0.0 else cap_hcm
+
+    t0_inf = valores.get('tempo_livre', 0.0)
+    try:
+        t0_val = float(t0_inf) if t0_inf is not None else 0.0
+    except (TypeError, ValueError):
+        t0_val = 0.0
     ffs = valores.get('vel_livre', 80.0)
-    t0 = calculate_free_flow_time(length_m, ffs)
+    t0 = t0_val if t0_val > 0.0 else calculate_free_flow_time(length_m, ffs)
 
     u = node_key(points[0], precision)
     v = node_key(points[-1], precision)
@@ -227,6 +242,9 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
         forward=True,
     )
 
+    if valores.get('mao_unica', False):
+        return arc_fw, None
+
     arc_bw = Arc(
         arc_id=(link_id, 'bw'),
         link_id=link_id,
@@ -245,7 +263,7 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
     return arc_fw, arc_bw
 
 
-def build_network(features, overrides=None, precision=3, id_field=None):
+def build_network(features, overrides=None, precision=3, id_field=None, field_map=None):
     """Processa uma coleção de feições/links rodoviários e constrói a rede de arcos direcionados.
 
     Args:
@@ -253,9 +271,10 @@ def build_network(features, overrides=None, precision=3, id_field=None):
         overrides (dict | None): Sobrescritas globais de parâmetros pelo usuário.
         precision (int): Casas decimais para snap de nós (padrão 3).
         id_field (str | None): Nome do campo de ID do link. Se None, tenta 'id', 'gid', 'link_id', etc. ou índice numérico.
+        field_map (dict | None): Parâmetro -> nome do campo mapeado na camada (D2).
 
     Returns:
-        list: Lista de objetos Arc direcionados (2 por link válido).
+        list: Lista de objetos Arc direcionados (1 ou 2 arcos por link).
     """
     arcs = []
     if not features:
@@ -309,9 +328,12 @@ def build_network(features, overrides=None, precision=3, id_field=None):
             feature=attr_dict,
             overrides=overrides,
             precision=precision,
+            field_map=field_map,
         )
-        arcs.append(fw)
-        arcs.append(bw)
+        if fw is not None:
+            arcs.append(fw)
+        if bw is not None:
+            arcs.append(bw)
 
     return arcs
 

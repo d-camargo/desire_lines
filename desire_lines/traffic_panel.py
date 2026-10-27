@@ -88,8 +88,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             return os.path.abspath(path)
         return os.path.join(os.path.expanduser('~'), 'output.gpkg')
 
-    # taMethod combo order must match: index 0 = AoN, index 1 = MSA (D10).
-    TRAFFIC_METHODS = ('aon', 'msa')
+    # taMethod combo order must match: index 0 = AoN, index 1 = MSA, index 2 = FW (D5, D10).
+    TRAFFIC_METHODS = ('aon', 'msa', 'fw')
 
     def _build_traffic_params_ui(self):
         """Fill taParamsGroup with one row per parameter of the D7 catalogue.
@@ -150,8 +150,21 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 overrides[key] = editor.value()
         return overrides
 
+    def _traffic_field_map(self):
+        """Read the mapped field combos into the ``field_map`` of ``params.resolve`` (D2).
+
+        Only parameters with a field picked are returned, as
+        ``{param_id: field_name}``.
+        """
+        return {
+            key: field_combo.currentField()
+            for key, (_editor, field_combo) in getattr(
+                self, '_traffic_param_widgets', {}).items()
+            if field_combo.currentField()
+        }
+
     def _traffic_method(self):
-        """Return the selected assignment method id ('aon' or 'msa')."""
+        """Return the selected assignment method id ('aon', 'msa' or 'fw')."""
         return self.TRAFFIC_METHODS[self.taMethod.currentIndex()]
 
     def _traffic_network_changed(self):
@@ -187,8 +200,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         The tab needs GisBR only when the network is to be downloaded; with an
         existing layer the rest of the tab works without it. The warning label
         stays visible while GisBR is missing so the reason is never hidden in a
-        tooltip. Iterations and gap tolerance only apply to MSA, so AoN greys
-        them out (D10).
+        tooltip. Iterations and gap tolerance only apply to equilibrium methods
+        (MSA and FW), so AoN greys them out (D5, D10).
         """
         available = gisbr_bridge.is_available()
         self.taGisbrWarning.setVisible(not available)
@@ -209,10 +222,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         for widget in (self.taRecorte, self.taLabelRecorte):
             widget.setEnabled(from_gisbr and is_regional)
 
-        is_msa = self._traffic_method() == 'msa'
+        is_equilibrium = self._traffic_method() in ('msa', 'fw')
         for widget in (self.taMaxIter, self.taGapTol,
                        self.taLabelMaxIter, self.taLabelGapTol):
-            widget.setEnabled(is_msa)
+            widget.setEnabled(is_equilibrium)
 
         regional_ok = (not is_regional) or bool(self.taRecorte.currentData())
         network_ready = bool(
@@ -266,6 +279,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         uf=None,
         centroids_crs=None,
         clip_buffer_m=None,
+        field_map=None,
     ):
         """Turn a highway layer into directed arcs plus a routable graph (steps 18-19).
 
@@ -314,6 +328,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             clip_buffer_m (float | None): When given with centroids, clip the
                 network to the centroids' bounding box (in the working CRS)
                 expanded by this many metres, instead of ``bbox``.
+            field_map (dict | None): Parameter -> highway-layer field mapped in
+                the panel (D2), read by ``params.resolve`` before the candidates.
 
         Returns:
             tuple: ``(graph, arcs, zone_node, unconnected)``. ``graph`` is None
@@ -443,7 +459,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
 
         arcs = network.build_network(
             features, overrides=overrides, precision=precision,
-            id_field=id_field) if features else []
+            id_field=id_field, field_map=field_map) if features else []
 
         if not arcs:
             self._push_message(
@@ -626,6 +642,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             _g, arcs, _zn, _unc = self.build_traffic_network(
                 road_layer=None if from_gisbr else road_layer,
                 overrides=self._traffic_overrides(),
+                field_map=self._traffic_field_map(),
                 id_field=self.taIdField.currentField() or None,
                 fetch_gisbr=from_gisbr,
                 bbox=bbox,
@@ -697,6 +714,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 centroids=centroids,
                 zone_keys=zone_keys,
                 overrides=self._traffic_overrides(),
+                field_map=self._traffic_field_map(),
                 max_dist_m=max_dist_m,
                 id_field=self.taIdField.currentField() or None,
                 fetch_gisbr=from_gisbr,

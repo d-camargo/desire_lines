@@ -92,14 +92,84 @@ def load_links(path=None):
     return links
 
 
-def road_layer(crs='EPSG:4326'):
+def load_link_records(path=None):
+    """Carrega os registros completos dos 76 links a partir de links.csv.
+
+    Args:
+        path (str, optional): Caminho customizado para links.csv.
+
+    Returns:
+        list of dict: Lista de dicionários com init_node, term_node, capacity, length, free_flow_time.
+    """
+    if path is None:
+        path = os.path.join(DATA_DIR, 'links.csv')
+    records = []
+    with open(path, mode='r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            records.append({
+                'init_node': int(row['init_node']),
+                'term_node': int(row['term_node']),
+                'capacity': float(row['capacity']),
+                'length': float(row['length']),
+                'free_flow_time': float(row['free_flow_time']),
+            })
+    return records
+
+
+def load_trips(path=None):
+    """Carrega os 528 pares OD de Sioux Falls com demanda > 0 a partir de trips.csv (D6).
+
+    Args:
+        path (str, optional): Caminho customizado para trips.csv.
+
+    Returns:
+        list of tuple: Lista de tuplas (origin, destination, demand) com 528 pares (total 360 600).
+    """
+    if path is None:
+        path = os.path.join(DATA_DIR, 'trips.csv')
+    trips = []
+    with open(path, mode='r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            o = int(row['origin'])
+            d = int(row['destination'])
+            dem = float(row['demand'])
+            trips.append((o, d, dem))
+    return trips
+
+
+def load_reference_flow(path=None):
+    """Carrega os 76 fluxos de equilíbrio do usuário (UE) de referência a partir de flow_ue.csv (D6).
+
+    Args:
+        path (str, optional): Caminho customizado para flow_ue.csv.
+
+    Returns:
+        dict: Mapeamento {(init_node, term_node): (volume, cost)} com volume e cost como floats.
+    """
+    if path is None:
+        path = os.path.join(DATA_DIR, 'flow_ue.csv')
+    flows = {}
+    with open(path, mode='r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            u = int(row['init_node'])
+            v = int(row['term_node'])
+            flows[(u, v)] = (float(row['volume']), float(row['cost']))
+    return flows
+
+
+def road_layer(crs='EPSG:4326', tntp_attrs=False):
     """Cria uma camada QgsVectorLayer em memória LineString com os links de Sioux Falls.
 
     Args:
         crs: CRS da camada (str ou QgsCoordinateReferenceSystem, padrão 'EPSG:4326').
+        tntp_attrs (bool): Se True, inclui campos capacity, free_flow_time e oneway (=1) (D6).
+            Padrão False para não alterar testes existentes.
 
     Returns:
-        QgsVectorLayer: Camada LineString com campos init_node, term_node e 76 feições.
+        QgsVectorLayer: Camada LineString com os links de Sioux Falls e 76 feições.
     """
     from qgis.core import (
         QgsCoordinateReferenceSystem,
@@ -123,14 +193,21 @@ def road_layer(crs='EPSG:4326'):
     layer = QgsVectorLayer(f"LineString?crs={crs_auth}", 'sioux_falls_roads', 'memory')
     dp = layer.dataProvider()
 
-    dp.addAttributes([
+    fields = [
         _create_field('init_node', 'int'),
         _create_field('term_node', 'int'),
-    ])
+    ]
+    if tntp_attrs:
+        fields.extend([
+            _create_field('capacity', 'double'),
+            _create_field('free_flow_time', 'double'),
+            _create_field('oneway', 'int'),
+        ])
+    dp.addAttributes(fields)
     layer.updateFields()
 
     nodes = load_nodes()
-    links = load_links()
+    link_records = load_link_records()
 
     src_crs = QgsCoordinateReferenceSystem('EPSG:4326')
     transform = None
@@ -138,7 +215,9 @@ def road_layer(crs='EPSG:4326'):
         transform = QgsCoordinateTransform(src_crs, target_crs, QgsProject.instance())
 
     features = []
-    for init_node, term_node in links:
+    for rec in link_records:
+        init_node = rec['init_node']
+        term_node = rec['term_node']
         x1, y1 = nodes[init_node]
         x2, y2 = nodes[term_node]
         pt1 = QgsPointXY(x1, y1)
@@ -149,7 +228,16 @@ def road_layer(crs='EPSG:4326'):
 
         feat = QgsFeature(layer.fields())
         feat.setGeometry(QgsGeometry.fromPolylineXY([pt1, pt2]))
-        feat.setAttributes([init_node, term_node])
+        if tntp_attrs:
+            feat.setAttributes([
+                init_node,
+                term_node,
+                rec['capacity'],
+                rec['free_flow_time'],
+                1,
+            ])
+        else:
+            feat.setAttributes([init_node, term_node])
         features.append(feat)
 
     dp.addFeatures(features)

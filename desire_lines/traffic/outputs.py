@@ -83,7 +83,7 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
         stats (dict | None): Estatísticas da alocação (deve conter 'metodo' ou 'method').
         crs (QgsCoordinateReferenceSystem | str | None): Sistema de referência.
         layer_name (str | None): Nome da camada. Se None, é derivado do método
-            (`alocacao_aon` / `alocacao_msa`), como manda D9/passo 15.
+            (`alocacao_aon` / `alocacao_msa` / `alocacao_fw`), como manda D9/passo 15.
 
     Returns:
         QgsVectorLayer: Camada vetorial em memória pronta com feições e atributos.
