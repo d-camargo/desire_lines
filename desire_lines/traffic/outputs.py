@@ -28,7 +28,7 @@ def _create_field(name, field_type):
 
     Args:
         name (str): Nome do campo.
-        field_type (str): Tipo ('string', 'double', 'int').
+        field_type (str): Tipo ('string', 'double', 'int', 'int64').
 
     Returns:
         QgsField: Instância configurada.
@@ -37,6 +37,7 @@ def _create_field(name, field_type):
         'string': ('QString', 'String'),
         'double': ('Double', 'Double'),
         'int': ('Int', 'Int'),
+        'int64': ('LongLong', 'LongLong'),
     }.get(str(field_type).lower(), ('QString', 'String'))
     try:
         from qgis.PyQt.QtCore import QMetaType
@@ -44,6 +45,17 @@ def _create_field(name, field_type):
     except (ImportError, AttributeError, TypeError):
         from qgis.PyQt.QtCore import QVariant
         return QgsField(name, getattr(QVariant, variant_name))
+
+
+def _is_integer_id(val):
+    """Verifica se o valor pode ser representado como identificador inteiro (D3)."""
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, int):
+        return True
+    if isinstance(val, float) and val.is_integer():
+        return True
+    return False
 
 
 def provenance_summary(arcs):
@@ -75,6 +87,14 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
 
     Camada do tipo LineString em memória contendo os atributos de tráfego,
     desempenho, provenientes de parâmetros e nível de serviço (D8, D15).
+    Conectores de centróide (`scope == CONNECTOR_LINK_ID`) são arcos
+    artificiais usados exclusivamente para o roteamento e não são publicados
+    na camada de saída (D1).
+
+    O tipo do campo `link_id` é `int64` quando todos os arcos publicados
+    possuem identificador numérico inteiro (`int` excluindo `bool`, ou `float`
+    com `.is_integer()`), e `string` como fallback quando contêm valores não
+    numéricos (como texto `'L1'` ou tuplas) (D3).
 
     Args:
         arcs (list): Lista de objetos Arc (de `network.py`).
@@ -107,10 +127,21 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
     layer = QgsVectorLayer(uri, layer_name, 'memory')
     provider = layer.dataProvider()
 
+    # D3: link_id é int64 quando todos os arcos publicados possuem id inteiro
+    published_arcs = [
+        arc for arc in (arcs or [])
+        if getattr(arc, 'scope', None) != CONNECTOR_LINK_ID
+    ]
+    int_link_id = bool(published_arcs) and all(
+        _is_integer_id(getattr(arc, 'link_id', None))
+        for arc in published_arcs
+    )
+    link_id_field_type = 'int64' if int_link_id else 'string'
+
     # Campos base
     fields = [
         _create_field('arc_id', 'string'),
-        _create_field('link_id', 'string'),
+        _create_field('link_id', link_id_field_type),
         _create_field('tipo', 'string'),
         _create_field('sentido', 'string'),
         _create_field('faixas', 'int'),
@@ -140,6 +171,10 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
     features = []
     if arcs:
         for idx, arc in enumerate(arcs):
+            # D1: Conectores de centróide não são publicados; preserva idx para fluxos
+            if getattr(arc, 'scope', None) == CONNECTOR_LINK_ID:
+                continue
+
             # Obtém volume alocado
             if isinstance(fluxos, dict):
                 v = float(fluxos.get(arc.arc_id, fluxos.get(arc, fluxos.get(idx, 0.0))))
@@ -163,9 +198,7 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
 
             atraso_h = max(0.0, tempo_h - t0_h)
 
-            if getattr(arc, 'scope', None) == CONNECTOR_LINK_ID:
-                tipo = 'conector'
-            elif isinstance(getattr(arc, 'arc_id', None), (tuple, list)) and len(arc.arc_id) == 3:
+            if isinstance(getattr(arc, 'arc_id', None), (tuple, list)) and len(arc.arc_id) == 3:
                 tipo = 'link_dividido'
             else:
                 tipo = 'link'
@@ -185,9 +218,11 @@ def flows_to_layer(arcs, fluxos, stats=None, crs=None, layer_name=None):
                 geom = QgsGeometry.fromPolylineXY(pts)
                 feat.setGeometry(geom)
 
+            link_id_val = int(arc.link_id) if int_link_id else str(arc.link_id)
+
             attr_vals = [
                 str(arc.arc_id),
-                str(arc.link_id),
+                link_id_val,
                 tipo,
                 sentido,
                 int(lanes),
@@ -229,8 +264,7 @@ VC_CLASSES = [
 def apply_vc_style(layer):
     """Aplica o estilo de simbologia baseado em regras (QgsRuleBasedRenderer).
 
-    Aplica estilo específico para conectores (linha tracejada cinza) e classes
-    de v/c de A a F para os demais links (D4).
+    Aplica classes de v/c de A a F para os links da rede (D2, D4).
 
     Args:
         layer (QgsVectorLayer): Camada vetorial de saída da alocação.
@@ -240,23 +274,10 @@ def apply_vc_style(layer):
 
     root_rule = QgsRuleBasedRenderer.Rule(None)
 
-    # Regra do conector (D4): cinza #808080, tracejada, largura 0.3
-    conn_symbol = QgsLineSymbol.createSimple({
-        'color': '#808080',
-        'width': '0.3',
-        'line_style': 'dash',
-    })
-    conn_rule = QgsRuleBasedRenderer.Rule(
-        conn_symbol,
-        filterExp="\"tipo\" = 'conector'",
-        label='Connector',
-    )
-    root_rule.appendChild(conn_rule)
-
-    # Regras das classes A-F de v/c (D4): excluem conector
+    # Regras das classes A-F de v/c (D2, D4)
     for idx, (min_val, max_val, label, color_hex, width) in enumerate(VC_CLASSES):
         op = '<=' if idx == len(VC_CLASSES) - 1 else '<'
-        filter_exp = f'"tipo" <> \'conector\' AND "vc" >= {min_val} AND "vc" {op} {max_val}'
+        filter_exp = f'"vc" >= {min_val} AND "vc" {op} {max_val}'
         symbol = QgsLineSymbol.createSimple({
             'color': color_hex,
             'width': str(width),

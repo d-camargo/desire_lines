@@ -17,6 +17,12 @@ from qgis.core import (
     QgsVectorLayer,
 )
 
+from qgis.PyQt.QtCore import QVariant
+try:
+    from qgis.PyQt.QtCore import QMetaType
+except ImportError:
+    QMetaType = None
+
 from desire_lines.traffic.network import Arc, CONNECTOR_LINK_ID
 from desire_lines.traffic_panel import TrafficAssignmentPanel
 
@@ -28,7 +34,7 @@ from test.close_nodes import (
     NODES,
     OD_PAIRS,
     _create_field,
-    assert_only_network_and_connectors,
+    assert_only_network,
     centroid_layer,
     od_layer,
     road_layer,
@@ -158,15 +164,15 @@ class TestCloseNodesRegression(unittest.TestCase):
 
     def _assert_diego_case_results(self, out_layer, panel):
         """Validações comuns de asserção geométrica, âncoras, tipos e volumes do caso do Diego."""
-        # 1. Asserção de que só há malha original/dividida e conectores
-        assert_only_network_and_connectors(out_layer, LINKS, CENTROIDS)
+        # 1. Asserção de que só há malha original/dividida (sem conectores)
+        assert_only_network(out_layer, LINKS)
 
         # 2. Âncoras registradas no painel
         self.assertEqual(panel.traffic_anchors, EXPECTED_ANCHORS)
 
         # 3. Contagem por tipo e por link
         features = list(out_layer.getFeatures())
-        self.assertEqual(len(features), 24)
+        self.assertEqual(len(features), 18)
 
         divididos = [f for f in features if f['tipo'] == 'link_dividido']
         links = [f for f in features if f['tipo'] == 'link']
@@ -174,7 +180,7 @@ class TestCloseNodesRegression(unittest.TestCase):
 
         self.assertEqual(len(divididos), 12)  # L1 (4), L2 (4), L4 (4)
         self.assertEqual(len(links), 6)        # L3 (2), L5 (2), L6 (2)
-        self.assertEqual(len(conectores), 6)   # Z1 (2), Z2 (2), Z3 (2)
+        self.assertEqual(len(conectores), 0)
 
         # Verifica 2 pedaços por link dividido e sentido (4 feições por link dividido)
         for lid in ('L1', 'L2', 'L4'):
@@ -242,14 +248,15 @@ class TestCloseNodesRegression(unittest.TestCase):
             for f in [x for x in links if x['link_id'] == lid]:
                 self.assertAlmostEqual(f['volume'], 0.0, msg=f"Link {lid} {f['sentido']} deve ter volume 0")
 
-        # Conectores
-        c1_fw = [f for f in conectores if f['comp_m'] == 200.0 and f['sentido'] == 'fw'][0]
-        c2_bw = [f for f in conectores if f['comp_m'] == 100.0 and f['sentido'] == 'bw'][0]
-        c3_fw = [f for f in conectores if f['comp_m'] == 1.5 and f['sentido'] == 'fw'][0]
-
-        self.assertAlmostEqual(c1_fw['volume'], 100.0)
-        self.assertAlmostEqual(c2_bw['volume'], 150.0)
-        self.assertAlmostEqual(c3_fw['volume'], 50.0)
+        # 5. link_id com campo String (os ids 'L1'.. são texto: fallback do D3)
+        field = out_layer.fields().field('link_id')
+        expected_types = [QVariant.String]
+        if hasattr(QMetaType, 'Type') and hasattr(QMetaType.Type, 'QString'):
+            expected_types.append(QMetaType.Type.QString)
+        self.assertIn(field.type(), expected_types)
+        for f in features:
+            self.assertIsInstance(f['link_id'], str)
+            self.assertTrue(f['link_id'].startswith('L'))
 
     def test_close_nodes_aon(self):
         """Caso do Diego em AoN pela porta do painel (D5)."""
@@ -282,8 +289,8 @@ class TestCloseNodesRegression(unittest.TestCase):
         self.assertEqual(len(divididos), 0)
         # 152 links
         self.assertEqual(len(highway_links), 152)
-        # 48 conectores
-        self.assertEqual(len(conectores), 48)
+        # 0 conectores
+        self.assertEqual(len(conectores), 0)
 
         # Transforma os nós de Sioux Falls para o CRS de trabalho do painel
         crs_src = QgsCoordinateReferenceSystem('EPSG:4326')

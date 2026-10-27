@@ -74,7 +74,7 @@ O grupo *Alocação* ("Assignment") pede a matriz e os centroides:
 | *ID de Tráfego* ("Traffic id") | Campo dos centroides com o mesmo id usado em Origem/Destino |
 | *Conector máximo (m)* ("Max connector (m)") | Distância máxima aceita entre um centroide e a malha rodoviária (`max_dist_m`, padrão 5000 m) |
 
-Cada centroide é ligado à malha por um **conector** de ida e volta (estilizado como conector tracejado cinza), com
+Cada centroide é ligado à malha por um **conector** de ida e volta (os conectores ligam o centroide à malha para o cálculo, mas **não aparecem** na camada de saída), com
 capacidade alta e custo desprezível — ele existe só para injetar a demanda na
 rede, não representa via nenhuma. A âncora é o ponto mais próximo **do link** (o link é
 dividido ali). Centroide cuja distância à malha está além do
@@ -161,14 +161,14 @@ A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*
 | Campo | Significado |
 |---|---|
 | `arc_id` / `link_id` / `sentido` | Identificação do arco dirigido e do link de origem (`fw`/`bw`) |
-| `tipo` | Classificação do arco: `link` (original intacto), `link_dividido` (dividido para ancorar centróide) ou `conector` |
+| `tipo` | Classificação do arco: `link` (original intacto) ou `link_dividido` (dividido para ancorar centróide) |
 | `faixas`, `comp_m`, `vel_livre` | Faixas por sentido, comprimento em metros, velocidade de fluxo livre |
 | `capacidade` | Capacidade por sentido em veíc/h (HCM ou informada) |
 | `volume` | Volume alocado no arco |
 | `vc` | `volume / capacidade` |
 | `los` | Nível de serviço **aproximado**, derivado do `vc` (o LOS oficial do HCM usa densidade/velocidade média de viagem) |
 | `tempo_h`, `atraso_h` | Tempo de viagem no arco e atraso sobre o fluxo livre |
-| `metodo`, `escopo` | Método usado (`fw`/`msa`/`aon`/`capacidade`) e `rodoviario`, `urbano` ou `conector` |
+| `metodo`, `escopo` | Método usado (`fw`/`msa`/`aon`/`capacidade`) e `rodoviario` ou `urbano` |
 | `src_*` | Proveniência de cada parâmetro (incluindo `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` ou `padrao` |
 
 A mensagem de sucesso ao final é onde as perdas aparecem: pares alocados,

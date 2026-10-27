@@ -30,9 +30,17 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.setupUi(self)
 
         self._build_traffic_params_ui()
+        # QGIS 4/Qt6 can emit layerChanged before currentLayer() reflects the
+        # new layer (or not at all when the model auto-selects it): the same
+        # handlers are also bound to currentIndexChanged, which always fires
+        # with the combo already settled. Handlers are idempotent setLayer
+        # calls, so the double firing on Qt5 is harmless.
         self.taNetworkCombo.layerChanged.connect(self._traffic_network_changed)
+        self.taNetworkCombo.currentIndexChanged.connect(self._traffic_network_changed)
         self.taMatrixCombo.layerChanged.connect(self._traffic_matrix_changed)
+        self.taMatrixCombo.currentIndexChanged.connect(self._traffic_matrix_changed)
         self.taCentroidsCombo.layerChanged.connect(self._traffic_centroids_changed)
+        self.taCentroidsCombo.currentIndexChanged.connect(self._traffic_centroids_changed)
         self.taRunCapacity.clicked.connect(self.run_capacity)
         self.taRunAssign.clicked.connect(self.run_assignment)
         for radio in (self.taNetFromLayer, self.taNetFromGisbr):
@@ -767,7 +775,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         if stats['unreachable']:
             notes.append(self.tr('{} pairs unreachable (disconnected network)')
                          .format(stats['unreachable']))
+        road_arcs = sum(
+            1 for a in arcs
+            if getattr(a, 'scope', None) != network.CONNECTOR_LINK_ID
+        )
         self._push_message(
             self.tr('{} done: {} pairs allocated over {} arcs — {}').format(
-                method.upper(), stats['allocated'], len(arcs), '; '.join(notes)),
+                method.upper(), stats['allocated'], road_arcs, '; '.join(notes)),
             level='success')

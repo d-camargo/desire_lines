@@ -10,10 +10,13 @@ QGIS_APP = get_qgis_app()
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsRuleBasedRenderer,
-    QgsRenderContext,
-    QgsExpression,
-    QgsExpressionContext,
 )
+from qgis.PyQt.QtCore import QVariant
+try:
+    from qgis.PyQt.QtCore import QMetaType
+except ImportError:
+    QMetaType = None
+
 from desire_lines.traffic.network import Arc, CONNECTOR_LINK_ID
 from desire_lines.traffic.outputs import flows_to_layer, apply_vc_style
 
@@ -110,7 +113,7 @@ class TestOutputsModule(unittest.TestCase):
         self.assertEqual(f1['metodo'], 'msa')
 
     def test_tipo_values(self):
-        """Testa os três valores possíveis do campo tipo: link, link_dividido e conector."""
+        """Testa que conectores não são publicados e que a ordem de fluxos é preservada."""
         arc_normal = Arc(
             arc_id=(10, 'fw'),
             link_id=10,
@@ -123,6 +126,19 @@ class TestOutputsModule(unittest.TestCase):
             params={},
             sources={},
             geometry=[(0.0, 0.0), (1000.0, 0.0)],
+        )
+        arc_conn = Arc(
+            arc_id=('conector-Z1', 'fw'),
+            link_id=CONNECTOR_LINK_ID,
+            from_node=(0.0, 0.0),
+            to_node=(100.0, 0.0),
+            length=100.0,
+            t0=0.03,
+            capacity=99999.0,
+            scope=CONNECTOR_LINK_ID,
+            params={},
+            sources={},
+            geometry=[(0.0, 0.0), (100.0, 0.0)],
         )
         arc_split = Arc(
             arc_id=(10, 'fw', 0),
@@ -137,27 +153,75 @@ class TestOutputsModule(unittest.TestCase):
             sources={},
             geometry=[(0.0, 0.0), (500.0, 0.0)],
         )
-        arc_conn = Arc(
-            arc_id=('conector-Z1', 'fw'),
-            link_id=CONNECTOR_LINK_ID,
+        layer = flows_to_layer([arc_normal, arc_conn, arc_split], [100.0, 0.0, 50.0], crs=self.crs)
+        feats = list(layer.getFeatures())
+        self.assertEqual(len(feats), 2)
+        for f in feats:
+            self.assertNotEqual(f['tipo'], 'conector')
+            self.assertNotEqual(f['escopo'], 'conector')
+            self.assertNotEqual(f['link_id'], 'conector')
+        self.assertEqual(feats[0]['tipo'], 'link')
+        self.assertEqual(feats[0]['volume'], 100.0)
+        self.assertEqual(feats[1]['tipo'], 'link_dividido')
+        self.assertEqual(feats[1]['volume'], 50.0)
+
+    def test_link_id_integer(self):
+        """Testa que link_id numérico gera campo de inteiro 64 bits e valor int."""
+        arc = Arc(
+            arc_id=(10, 'fw'),
+            link_id=10,
             from_node=(0.0, 0.0),
-            to_node=(100.0, 0.0),
-            length=100.0,
-            t0=0.03,
-            capacity=99999.0,
-            scope=CONNECTOR_LINK_ID,
+            to_node=(1000.0, 0.0),
+            length=1000.0,
+            t0=0.6,
+            capacity=1000.0,
+            scope='rodoviario',
             params={},
             sources={},
-            geometry=[(0.0, 0.0), (100.0, 0.0)],
+            geometry=[(0.0, 0.0), (1000.0, 0.0)],
         )
-        layer = flows_to_layer([arc_normal, arc_split, arc_conn], [100.0, 50.0, 0.0], crs=self.crs)
-        feats = list(layer.getFeatures())
-        self.assertEqual(feats[0]['tipo'], 'link')
-        self.assertEqual(feats[1]['tipo'], 'link_dividido')
-        self.assertEqual(feats[2]['tipo'], 'conector')
+        layer = flows_to_layer([arc], [100.0], crs=self.crs)
+        field = layer.fields().field('link_id')
+
+        expected_types = [QVariant.LongLong]
+        if hasattr(QMetaType, 'Type') and hasattr(QMetaType.Type, 'LongLong'):
+            expected_types.append(QMetaType.Type.LongLong)
+        self.assertIn(field.type(), expected_types)
+
+        feat = next(layer.getFeatures())
+        self.assertEqual(feat['link_id'], 10)
+        self.assertIsInstance(feat['link_id'], int)
+        self.assertNotIsInstance(feat['link_id'], bool)
+
+    def test_link_id_string_fallback(self):
+        """Testa que link_id não-numérico mantém campo String e valor original."""
+        arc = Arc(
+            arc_id=('L1', 'fw'),
+            link_id='L1',
+            from_node=(0.0, 0.0),
+            to_node=(1000.0, 0.0),
+            length=1000.0,
+            t0=0.6,
+            capacity=1000.0,
+            scope='rodoviario',
+            params={},
+            sources={},
+            geometry=[(0.0, 0.0), (1000.0, 0.0)],
+        )
+        layer = flows_to_layer([arc], [100.0], crs=self.crs)
+        field = layer.fields().field('link_id')
+
+        expected_types = [QVariant.String]
+        if hasattr(QMetaType, 'Type') and hasattr(QMetaType.Type, 'QString'):
+            expected_types.append(QMetaType.Type.QString)
+        self.assertIn(field.type(), expected_types)
+
+        feat = next(layer.getFeatures())
+        self.assertEqual(feat['link_id'], 'L1')
+        self.assertIsInstance(feat['link_id'], str)
 
     def test_apply_vc_style(self):
-        """Testa aplicação da simbologia baseada em regras por classes de v/c e conector."""
+        """Testa aplicação da simbologia baseada em regras por classes de v/c (D2)."""
         fluxos = [500.0, 1200.0]
         stats = {'metodo': 'msa'}
         layer = flows_to_layer(self.arcs, fluxos, stats=stats, crs=self.crs)
@@ -168,76 +232,18 @@ class TestOutputsModule(unittest.TestCase):
         self.assertIsInstance(renderer, QgsRuleBasedRenderer)
         root_rule = renderer.rootRule()
         children = root_rule.children()
-        # 1 conector + 6 faixas v/c = 7 regras
-        self.assertEqual(len(children), 7)
+        # 6 faixas v/c (sem regra de conector, D2)
+        self.assertEqual(len(children), 6)
 
-        # Regra do conector: casa tipo='conector' com símbolo tracejado cinza (#808080, largura 0.3)
-        conn_rules = [r for r in children if r.filterExpression() == "\"tipo\" = 'conector'"]
-        self.assertEqual(len(conn_rules), 1)
-        conn_rule = conn_rules[0]
-        self.assertEqual(conn_rule.label(), 'Connector')
+        for r in children:
+            self.assertNotIn('conector', r.filterExpression())
 
-        conn_sym = conn_rule.symbol()
-        self.assertEqual(conn_sym.color().name().lower(), '#808080')
-        self.assertAlmostEqual(conn_sym.width(), 0.3, places=2)
-        sl = conn_sym.symbolLayer(0)
-        self.assertEqual(sl.properties().get('line_style'), 'dash')
-
-        # Regras de v/c excluem conector
-        vc_rules = [r for r in children if r is not conn_rule]
-        self.assertEqual(len(vc_rules), 6)
-        for r in vc_rules:
-            self.assertIn("\"tipo\" <> 'conector'", r.filterExpression())
-
-        labels = [r.label() for r in vc_rules]
+        labels = [r.label() for r in children]
+        expected_prefixes = ['A', 'B', 'C', 'D', 'E', 'F']
+        for prefix, label in zip(expected_prefixes, labels):
+            self.assertTrue(label.startswith(prefix))
         self.assertIn('A (<= 0.35)', labels[0])
         self.assertIn('F (> 1.00)', labels[-1])
-
-    def test_connector_feature_does_not_match_class_a(self):
-        """Testa que uma feição de conector com vc=0 não cai na regra da classe A."""
-        arc_conn = Arc(
-            arc_id=('conector-Z1', 'fw'),
-            link_id=CONNECTOR_LINK_ID,
-            from_node=(0.0, 0.0),
-            to_node=(100.0, 0.0),
-            length=100.0,
-            t0=0.03,
-            capacity=99999.0,
-            scope=CONNECTOR_LINK_ID,
-            params={},
-            sources={},
-            geometry=[(0.0, 0.0), (100.0, 0.0)],
-        )
-        layer = flows_to_layer([arc_conn], [0.0], stats={'metodo': 'aon'}, crs=self.crs)
-        apply_vc_style(layer)
-
-        feat_conn = next(layer.getFeatures())
-        self.assertEqual(feat_conn['tipo'], 'conector')
-        self.assertEqual(feat_conn['vc'], 0.0)
-
-        renderer = layer.renderer()
-        root_rule = renderer.rootRule()
-
-        render_ctx = QgsRenderContext()
-        render_ctx.expressionContext().setFields(layer.fields())
-
-        renderer.startRender(render_ctx, layer.fields())
-        matching_rules = [
-            r.label() for r in root_rule.children()
-            if r.willRenderFeature(feat_conn, render_ctx)
-        ]
-        renderer.stopRender(render_ctx)
-
-        self.assertIn('Connector', matching_rules)
-        self.assertNotIn('A (<= 0.35)', matching_rules)
-
-        # Verificação direta via QgsExpression da regra A
-        rule_a = [r for r in root_rule.children() if 'A' in r.label()][0]
-        ctx = QgsExpressionContext()
-        ctx.setFields(layer.fields())
-        ctx.setFeature(feat_conn)
-        exp_a = QgsExpression(rule_a.filterExpression())
-        self.assertFalse(bool(exp_a.evaluate(ctx)))
 
 
 if __name__ == '__main__':

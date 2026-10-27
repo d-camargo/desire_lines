@@ -9,6 +9,11 @@ from qgis.core import (
     QgsPointXY,
     QgsProject,
 )
+from qgis.PyQt.QtCore import QVariant
+try:
+    from qgis.PyQt.QtCore import QMetaType
+except ImportError:
+    QMetaType = None
 from desire_lines.traffic.network import (
     build_network,
     clip_and_clean,
@@ -253,7 +258,7 @@ class TestSiouxFallsFixture(unittest.TestCase):
 
         return out_layer, stats, panel, zone_node
 
-    def _assert_d6_layer(self, out_layer, stats, panel, anchors):
+    def _assert_d6_layer(self, out_layer, stats, panel, anchors=None):
         """Verifica as asserções (a)–(e) do D6 e a integridade da rede sobre a camada."""
         crs_src = QgsCoordinateReferenceSystem('EPSG:4326')
         crs_dst = panel.traffic_crs
@@ -275,10 +280,12 @@ class TestSiouxFallsFixture(unittest.TestCase):
             return None
 
         features = list(out_layer.getFeatures())
-        highway_feats = [f for f in features if f['link_id'] != 'conector']
-        connector_feats = [f for f in features if f['link_id'] == 'conector']
+        highway_feats = features
+        for f in features:
+            self.assertNotEqual(f['tipo'], 'conector')
+            self.assertNotEqual(f['link_id'], 'conector')
 
-        # (a) toda feição com link_id != 'conector' corresponde a um link de entrada e
+        # (a) toda feição corresponde a um link de entrada e
         # suas extremidades são os dois nós desse link (tolerância 1 m, no work_crs)
         for feat in highway_feats:
             pts = feat.geometry().asPolyline()
@@ -302,60 +309,40 @@ class TestSiouxFallsFixture(unittest.TestCase):
         for lid, sentidos in by_link.items():
             self.assertEqual(sorted(sentidos), ['bw', 'fw'])
 
-        # (c) há exatamente 2 conectores por zona conectada — 48 em Sioux Falls —, cada um
-        # ligando o centróide da zona ao zone_node[zona] e nada mais
-        self.assertEqual(len(connector_feats), 48)
-        zone_keys = list(range(1, 25))
-        zone_connectors = {z: [] for z in zone_keys}
-        for feat in connector_feats:
-            pts = feat.geometry().asPolyline()
-            self.assertEqual(len(pts), 2)
-            p0 = (pts[0].x(), pts[0].y())
-            p1 = (pts[-1].x(), pts[-1].y())
-            matched_z = None
-            for z in zone_keys:
-                c_pt = nodes_work[z]
-                zn_pt = anchors[z]
-                fw_match = (math.hypot(p0[0] - c_pt[0], p0[1] - c_pt[1]) <= 1.0 and
-                            math.hypot(p1[0] - zn_pt[0], p1[1] - zn_pt[1]) <= 1.0)
-                bw_match = (math.hypot(p0[0] - zn_pt[0], p0[1] - zn_pt[1]) <= 1.0 and
-                            math.hypot(p1[0] - c_pt[0], p1[1] - c_pt[1]) <= 1.0)
-                if fw_match or bw_match:
-                    matched_z = z
-                    break
-            self.assertIsNotNone(matched_z, f"Conector {p0}->{p1} não corresponde a nenhuma zona")
-            zone_connectors[matched_z].append(feat)
+        # Campo link_id é inteiro e os 76 ids são int (D3)
+        field = out_layer.fields().field('link_id')
+        expected_types = [QVariant.LongLong, QVariant.Int]
+        if hasattr(QMetaType, 'Type'):
+            if hasattr(QMetaType.Type, 'LongLong'):
+                expected_types.append(QMetaType.Type.LongLong)
+            if hasattr(QMetaType.Type, 'Int'):
+                expected_types.append(QMetaType.Type.Int)
+        self.assertIn(field.type(), expected_types)
+        for lid in by_link.keys():
+            self.assertIsInstance(lid, int)
 
-        for z in zone_keys:
-            conns = zone_connectors[z]
-            self.assertEqual(len(conns), 2, f"Zona {z} deve ter exatamente 2 conectores")
-            self.assertEqual(sorted([c['sentido'] for c in conns]), ['bw', 'fw'])
+        # (c) 0 conectores na camada
+        connector_feats = [f for f in features if f['tipo'] == 'conector' or f['link_id'] == 'conector']
+        self.assertEqual(len(connector_feats), 0)
 
-        # (d) nenhum arco é laço (extremidades iguais) fora dos conectores de comprimento zero
+        # (d) nenhuma feição é laço (extremidades iguais)
         for feat in features:
             pts = feat.geometry().asPolyline()
             p0 = (pts[0].x(), pts[0].y())
             p1 = (pts[-1].x(), pts[-1].y())
             dist = math.hypot(p0[0] - p1[0], p0[1] - p1[1])
-            if dist <= 1.0:
-                self.assertEqual(feat['link_id'], 'conector', f"Laço em arco que não é conector: {feat['link_id']}")
-                self.assertAlmostEqual(feat['comp_m'], 0.0, delta=1.0)
-            else:
-                self.assertGreater(dist, 1.0)
+            self.assertGreater(dist, 1.0)
 
-        # (e) todo arco com fluxo > 0 satisfaz (a) ou (c)
+        # (e) todo arco com fluxo > 0 satisfaz (a)
         flow_gt0 = [f for f in features if float(f['volume']) > 0.0]
         self.assertGreater(len(flow_gt0), 0)
         for feat in flow_gt0:
-            if feat['link_id'] != 'conector':
-                pts = feat.geometry().asPolyline()
-                u = match_node((pts[0].x(), pts[0].y()), tol=1.0)
-                v = match_node((pts[-1].x(), pts[-1].y()), tol=1.0)
-                self.assertIsNotNone(u)
-                self.assertIsNotNone(v)
-                self.assertIn(tuple(sorted((u, v))), fixture_pairs)
-            else:
-                self.assertIn(feat, connector_feats)
+            pts = feat.geometry().asPolyline()
+            u = match_node((pts[0].x(), pts[0].y()), tol=1.0)
+            v = match_node((pts[-1].x(), pts[-1].y()), tol=1.0)
+            self.assertIsNotNone(u)
+            self.assertIsNotNone(v)
+            self.assertIn(tuple(sorted((u, v))), fixture_pairs)
 
         # Mais um caso: os 38 pares da fixture aparecem todos na camada e stats['unreachable'] == 0
         pairs_in_layer = set()

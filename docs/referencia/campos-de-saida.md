@@ -71,7 +71,7 @@ Gerada após executar a alocação de demanda da matriz OD sobre a malha rodovi�
 | Campo | Tipo | Unidade | Descrição |
 |---|---|---|---|
 | `arc_id` | Texto (`String`) | - | Identificador único do arco direcionado no grafo (ex.: `('link101', 'fw')` ou `('link101', 'bw')`). |
-| `link_id` | Texto (`String`) | - | Identificador do segmento/link original da malha rodoviária de entrada (ex.: código do trecho SNV/DER). |
+| `link_id` | Inteiro (`Integer64`) ou Texto (`String`) | - | Identificador do segmento/link original da malha rodoviária de entrada (ex.: código do trecho SNV/DER). É **Inteiro (`Integer64`)** quando o id de origem é numérico (o padrão, FID da feição) e Texto (`String`) quando o *Campo de id do link* tem valores não numéricos. |
 | `sentido` | Texto (`String`) | - | Sentido de trafegabilidade do arco: `fw` (*forward* — idêntico à orientação da geometria) ou `bw` (*backward* — inverso à geometria). |
 | `faixas` | Inteiro (`Int`) | faixas | Número de faixas de rolamento disponíveis por sentido no trecho. |
 | `comp_m` | Decimal (`Double`) | m | Comprimento real do trecho viário em metros. |

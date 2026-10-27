@@ -646,6 +646,68 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.assertEqual(arc.capacity, 1234.0)
             self.assertEqual(arc.sources['capacidade'], 'oficial')
 
+    def test_d4_run_assignment_success_message_counts_only_highway_arcs(self):
+        """Num run_assignment com centroides, o número na mensagem de sucesso é igual ao de feições publicadas (D4)."""
+        import re
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
+
+        road_layer = self._line_layer('EPSG:32614', [
+            [(700000.0, 4830000.0), (700100.0, 4830000.0)],
+            [(700100.0, 4830000.0), (700100.0, 4830100.0)],
+        ])
+
+        cent_layer = QgsVectorLayer('Point?crs=EPSG:32614&field=zone_id:int', 'centroids', 'memory')
+        c_feats = []
+        for zid, (x, y) in [(1, (700000.0, 4830005.0)), (2, (700100.0, 4830050.0))]:
+            feat = QgsFeature(cent_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(x, y)))
+            feat.setAttribute('zone_id', zid)
+            c_feats.append(feat)
+        cent_layer.dataProvider().addFeatures(c_feats)
+        cent_layer.updateExtents()
+
+        matrix_layer = QgsVectorLayer('None?field=origem:int&field=destino:int&field=fluxo:double', 'od', 'memory')
+        m_feat = QgsFeature(matrix_layer.fields())
+        m_feat.setAttribute('origem', 1)
+        m_feat.setAttribute('destino', 2)
+        m_feat.setAttribute('fluxo', 100.0)
+        matrix_layer.dataProvider().addFeatures([m_feat])
+
+        project = QgsProject.instance()
+        project.addMapLayers([road_layer, cent_layer, matrix_layer])
+        self.addCleanup(lambda: project.removeMapLayers([road_layer.id(), cent_layer.id(), matrix_layer.id()]))
+
+        self.dialog.taNetFromLayer.setChecked(True)
+        self.dialog.taNetworkCombo.setLayer(road_layer)
+        self.dialog.taCentroidsCombo.setLayer(cent_layer)
+        self.dialog.taZoneIdField.setField('zone_id')
+        self.dialog.taMatrixCombo.setLayer(matrix_layer)
+        self.dialog.taOriginField.setField('origem')
+        self.dialog.taDestField.setField('destino')
+        self.dialog.taValueField.setField('fluxo')
+
+        published_layers = []
+        self.dialog._write_layer_to_gpkg = MagicMock(
+            side_effect=lambda layer, table: (published_layers.append(layer), layer)[1])
+
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_assignment()
+
+        self.assertEqual(self.dialog.last_message[0], 'success')
+        self.assertEqual(len(published_layers), 1)
+        published_layer = published_layers[0]
+
+        # Centroides criam conectores na malha; feições publicadas não os incluem
+        self.assertGreater(published_layer.featureCount(), 0)
+
+        match = re.search(r'over (\d+) arcs', self.dialog.last_message[1])
+        self.assertIsNotNone(match)
+        reported_arcs = int(match.group(1))
+
+        self.assertEqual(reported_arcs, published_layer.featureCount())
+
 
 if __name__ == "__main__":
     suite = unittest.makeSuite(TrafficAssignmentPanelTest)

@@ -13,8 +13,6 @@ OD:
   3 -> 2 = 50
 """
 
-import math
-
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsFeature,
@@ -182,22 +180,19 @@ def od_layer():
     return layer
 
 
-def assert_only_network_and_connectors(layer, links, centroids, tol_m=0.001):
-    """Verifica que a camada contém apenas links originais/divididos e conectores (D5).
+def assert_only_network(layer, links, centroids=None, tol_m=0.001):
+    """Verifica que a camada contém apenas links originais e divididos (D5).
 
     Regras verificadas:
-    1. Toda feição tem `tipo in ('link', 'link_dividido', 'conector')`; não há feição de outro tipo.
+    1. Toda feição tem `tipo in ('link', 'link_dividido')`; não há conector nem outro tipo.
     2. Toda feição `tipo in ('link', 'link_dividido')` tem todos os vértices sobre a polyline
        do link original de mesmo `link_id` (tolerância tol_m = 1 mm) e, por `link_id`/sentido,
        os comprimentos dos pedaços somam o comprimento original (tolerância tol_m = 1 mm).
-    3. Toda feição `tipo='conector'` tem 2 vértices, um correspondente ao centróide de alguma zona,
-       o outro sobre a polyline de algum link original, e `comp_m` igual à distância de projeção
-       (tolerância tol_m = 1 mm).
 
     Args:
         layer (QgsVectorLayer): Camada gravada ou gerada pela alocação.
         links (dict | QgsVectorLayer): Mapeamento {link_id: [(x, y), ...]} ou camada de links.
-        centroids (dict | list | QgsVectorLayer): Mapeamento {zone: (x, y)}, lista de pontos ou camada.
+        centroids (dict | list | QgsVectorLayer, optional): Não utilizado (mantido por compatibilidade).
         tol_m (float): Tolerância geométrica em metros (padrão 0.001 = 1 mm).
     """
     # 1. Normalização dos links originais em {link_id: QgsGeometry}
@@ -220,73 +215,28 @@ def assert_only_network_and_connectors(layer, links, centroids, tol_m=0.001):
 
     orig_lengths = {lid: geom.length() for lid, geom in link_dict.items()}
 
-    # 2. Normalização dos centróides em {zone_key: (x, y)}
-    if hasattr(centroids, 'getFeatures'):
-        cent_dict = {}
-        for feat in centroids.getFeatures():
-            fields = [f.name() for f in feat.fields()]
-            zid = feat['zone'] if 'zone' in fields else feat.id()
-            pt = feat.geometry().asPoint()
-            cent_dict[zid] = (pt.x(), pt.y())
-    elif isinstance(centroids, dict):
-        cent_dict = {z: (float(p[0]), float(p[1])) for z, p in centroids.items()}
-    elif isinstance(centroids, (list, tuple)):
-        cent_dict = {i: (float(p[0]), float(p[1])) for i, p in enumerate(centroids)}
-    else:
-        raise TypeError(f"Formato de centroids não suportado: {type(centroids)}")
-
     pieces_by_link_sentido = {}
 
     for feat in layer.getFeatures():
         tipo = feat['tipo']
-        assert tipo in ('link', 'link_dividido', 'conector'), (
+        assert tipo in ('link', 'link_dividido'), (
             f"Tipo inesperado '{tipo}' na feição arc_id={feat['arc_id']}"
         )
 
         pts = feat.geometry().asPolyline()
 
-        if tipo in ('link', 'link_dividido'):
-            lid = str(feat['link_id'])
-            assert lid in link_dict, f"link_id '{lid}' não pertence aos links originais"
-            orig_geom = link_dict[lid]
+        lid = str(feat['link_id'])
+        assert lid in link_dict, f"link_id '{lid}' não pertence aos links originais"
+        orig_geom = link_dict[lid]
 
-            for pt in pts:
-                dist = orig_geom.distance(QgsGeometry.fromPointXY(pt))
-                assert dist <= tol_m, (
-                    f"Vértice {pt} do arco {feat['arc_id']} não está sobre o link original {lid} (dist={dist} m)"
-                )
-
-            sentido = str(feat['sentido'])
-            pieces_by_link_sentido.setdefault((lid, sentido), []).append(feat)
-
-        elif tipo == 'conector':
-            assert len(pts) == 2, (
-                f"Conector {feat['arc_id']} deve ter exatamente 2 vértices, tem {len(pts)}"
-            )
-            p0 = (pts[0].x(), pts[0].y())
-            p1 = (pts[-1].x(), pts[-1].y())
-
-            # Um dos vértices deve ser o centróide de alguma zona (dentro de tol_m)
-            match_c0 = any(math.hypot(p0[0] - cx, p0[1] - cy) <= tol_m for cx, cy in cent_dict.values())
-            match_c1 = any(math.hypot(p1[0] - cx, p1[1] - cy) <= tol_m for cx, cy in cent_dict.values())
-            assert match_c0 or match_c1, (
-                f"Conector {feat['arc_id']} com extremidades ({p0}, {p1}) não inicia nem termina em centróide"
+        for pt in pts:
+            dist = orig_geom.distance(QgsGeometry.fromPointXY(pt))
+            assert dist <= tol_m, (
+                f"Vértice {pt} do arco {feat['arc_id']} não está sobre o link original {lid} (dist={dist} m)"
             )
 
-            # O outro vértice deve estar sobre algum link original
-            link_pt = pts[1] if match_c0 else pts[0]
-            link_pt_geom = QgsGeometry.fromPointXY(link_pt)
-            on_network = any(orig_geom.distance(link_pt_geom) <= tol_m for orig_geom in link_dict.values())
-            assert on_network, (
-                f"Extremidade de âncora {link_pt} do conector {feat['arc_id']} não está sobre nenhum link original"
-            )
-
-            # comp_m deve ser igual à distância geométrica
-            dist_pts = math.hypot(p0[0] - p1[0], p0[1] - p1[1])
-            comp_m = float(feat['comp_m'])
-            assert abs(comp_m - dist_pts) <= tol_m, (
-                f"comp_m={comp_m} diverge do comprimento da geometria={dist_pts} no conector {feat['arc_id']}"
-            )
+        sentido = str(feat['sentido'])
+        pieces_by_link_sentido.setdefault((lid, sentido), []).append(feat)
 
     # Verifica a soma dos comprimentos dos pedaços para cada (link_id, sentido)
     for (lid, sentido), piece_feats in pieces_by_link_sentido.items():
