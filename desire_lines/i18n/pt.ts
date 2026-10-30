@@ -18,6 +18,31 @@
         <source>Alocação em rodovias</source>
         <translation>Alocação em rodovias</translation>
     </message>
+    <message>
+        <location filename="../desirelines.py" line="226"/>
+        <source>Desire Lines — GISBR</source>
+        <translation>Desire Lines — GISBR</translation>
+    </message>
+    <message>
+        <location filename="../desirelines.py" line="227"/>
+        <source>Other plugin features remain available without it.</source>
+        <translation>Outras funções do plugin continuam disponíveis sem ele.</translation>
+    </message>
+    <message>
+        <location filename="../desirelines.py" line="232"/>
+        <source>Open Plugin Manager</source>
+        <translation>Abrir Gerenciador de Complementos</translation>
+    </message>
+    <message>
+        <location filename="../desirelines.py" line="236"/>
+        <source>Not now</source>
+        <translation>Agora não</translation>
+    </message>
+    <message>
+        <location filename="../desirelines.py" line="240"/>
+        <source>Don't show again</source>
+        <translation>Não mostrar novamente</translation>
+    </message>
 </context>
 <context>
     <name>DesireLinesDialog</name>

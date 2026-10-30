@@ -22,14 +22,15 @@
  ***************************************************************************/
 """
 import os
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QMenu, QToolButton
-from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel
+from qgis.PyQt.QtWidgets import QAction, QMenu, QToolButton, QMessageBox, QCheckBox
+from qgis.core import QgsMapLayerProxyModel, QgsFieldProxyModel, QgsSettings
 
 # Import the code for the dialog
 from .desirelines_dialog import DesireLinesDialog
 from .traffic_panel import TrafficAssignmentPanel
+from .traffic import gisbr_bridge
 
 
 class DesireLines:
@@ -204,6 +205,53 @@ class DesireLines:
 
         # will be set False in run()
         self.first_start = True
+
+        QTimer.singleShot(0, self._check_gisbr)
+
+    def _check_gisbr(self):
+        """Check if GISBR is available and prompt installation if missing (D2).
+
+        :returns: True if the prompt message box was shown, False otherwise.
+        :rtype: bool
+        """
+        settings = QgsSettings()
+        if settings.value('desire_lines/skip_gisbr_check', False, type=bool):
+            return False
+
+        if gisbr_bridge.is_available():
+            return False
+
+        box = QMessageBox(self.iface.mainWindow())
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(self.tr(u'Desire Lines — GISBR'))
+        extra_phrase = self.tr(u'Other plugin features remain available without it.')
+        message = u'{}\n\n{}'.format(gisbr_bridge.missing_message(), extra_phrase)
+        box.setText(message)
+
+        btn_manage = box.addButton(
+            self.tr(u'Open Plugin Manager'),
+            QMessageBox.ButtonRole.AcceptRole
+        )
+        box.addButton(
+            self.tr(u'Not now'),
+            QMessageBox.ButtonRole.RejectRole
+        )
+
+        cb = QCheckBox(self.tr(u"Don't show again"))
+        box.setCheckBox(cb)
+
+        box.exec()
+        checked = cb.isChecked()
+
+        if checked:
+            settings.setValue('desire_lines/skip_gisbr_check', True)
+
+        if box.clickedButton() == btn_manage:
+            action = self.iface.actionManagePlugins()
+            if action is not None:
+                action.trigger()
+
+        return True
 
     def show_traffic_panel(self):
         """Show or toggle the Traffic Assignment dock widget."""

@@ -23,11 +23,16 @@ into the same output GeoPackage.
    network (SNV), by AoN or by MSA/BPR equilibrium.
 
 !!! warning "Requirements and scope of the Highway Assignment tab"
-    This tab needs the [**GISBR**](https://github.com/d-camargo/gisbr) plugin
-    (`plugin_dependencies=GisBR`), which is what downloads the official Brazilian
-    highway network (SNV/DNIT, INDE). Without GISBR the first three tabs work
-    normally; in this tab the download option is disabled, and you can still use it
-    by pointing to a highway layer already loaded in the project.
+    The [**GISBR**](https://github.com/d-camargo/gisbr) plugin is optional: it
+    is required only to download the official Brazilian highway network
+    (SNV/DNIT, INDE). Desire Lines checks at runtime whether GISBR is present
+    and does not ask to install it when it already exists. Without GISBR, a
+    single window appears upon loading the plugin suggesting installation, with
+    a button for the Plugin Manager and a "Don't show again" option (the warning
+    notice inside the Highway Assignment tab remains visible). Without GISBR,
+    the first three tabs work normally; in the Highway Assignment tab only the
+    network download option is disabled, and you can still use it by pointing to
+    a highway layer already loaded in the project.
 
     Its scope is **rural and interurban highways**. Urban crossings inside the
     network are flagged with `escopo = 'urbano'` and warned about — they are *not*

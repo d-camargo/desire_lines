@@ -46,20 +46,22 @@ diálogo principal *Desire Lines*; a seta abre o menu suspenso com as opções
 
 ## Requisito do GISBR (aba Alocação em rodovias)
 
-!!! warning "GISBR é necessário só para baixar a malha oficial"
-    O `metadata.txt` declara `plugin_dependencies=GisBR`, mas quem decide em
-    tempo de execução é a checagem `gisbr_bridge.is_available()` — não o
-    metadado. O [GISBR](https://github.com/d-camargo/gisbr) é quem busca a
+!!! warning "GISBR é opcional (necessário só para baixar a malha oficial)"
+    O [GISBR](https://github.com/d-camargo/gisbr) é opcional: ele é quem busca a
     malha rodoviária oficial (SNV/DNIT, INDE) e requer QGIS 3.16 ou mais
-    novo.
+    novo. O Desire Lines verifica em tempo de execução se o GISBR está
+    instalado e não pede para instalá-lo quando ele já existe.
 
-    **Sem o GISBR instalado**, as três primeiras abas (*Matriz OD*, *Linhas
-    de desejo*, *AoN (Delaunay)*) funcionam normalmente. Na aba *Alocação em
-    rodovias* aparece um aviso visível e a opção de baixar a malha pelo
-    GISBR fica desabilitada — mas a aba continua utilizável se você já tiver
-    uma camada de malha rodoviária carregada no projeto e apontar para ela.
-    Ou seja, o que se perde sem o GISBR é o download da malha oficial, não a
-    aba inteira.
+    **Sem o GISBR instalado**, aparece **uma** janela ao carregar o plugin
+    sugerindo a instalação, com botão para o Gerenciador de Complementos e a
+    opção "Não mostrar novamente".
+
+    Mesmo sem o GISBR, as três primeiras abas (*Matriz OD*, *Linhas de desejo*,
+    *AoN (Delaunay)*) funcionam normalmente. Na aba *Alocação em rodovias*, o
+    aviso visível continua sendo exibido e a opção de baixar a malha pelo GISBR
+    fica desabilitada — mas a aba continua utilizável se você já tiver uma
+    camada de malha rodoviária carregada no projeto e apontar para ela. Ou seja,
+    o que se perde sem o GISBR é o download da malha oficial, não a aba inteira.
 
     A mensagem exibida é: "O plugin GisBR
     (https://github.com/d-camargo/gisbr) é necessário para obter a malha

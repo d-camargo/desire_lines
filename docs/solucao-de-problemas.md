@@ -14,11 +14,15 @@ procure por ela nesta página (`Ctrl+F`).
     obter a malha rodoviária oficial." — exibida como um aviso fixo no topo da
     aba *Alocação em rodovias*.
 
-**Causa.** O plugin [GISBR](https://github.com/d-camargo/gisbr) não está
-instalado ou não foi detectado. A checagem é feita em tempo de execução
-(`gisbr_bridge.is_available()`), não pelo `plugin_dependencies` do metadado:
-ela tenta importar `gisbr.core.sources`/`gisbr.core.connectors.wfs` e, se
-falhar, procura o provedor de processamento `gisbr` registrado no QGIS.
+**Causa.** O plugin [GISBR](https://github.com/d-camargo/gisbr) é opcional e
+não está instalado ou não foi detectado. A checagem é feita em tempo de
+execução (`gisbr_bridge.is_available()`): ela tenta importar
+`gisbr.core.sources`/`gisbr.core.connectors.wfs` e, se falhar, procura o
+provedor de processamento `gisbr` registrado no QGIS. O Desire Lines não pede
+para instalá-lo quando ele já existe. Sem o GISBR instalado, aparece **uma**
+janela ao carregar o plugin sugerindo a instalação, com botão para o
+Gerenciador de Complementos e a opção "Não mostrar novamente" (o aviso na aba
+de alocação continua).
 
 **O que fazer.**
 

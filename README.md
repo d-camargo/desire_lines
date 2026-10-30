@@ -31,7 +31,7 @@ There are two places where you can open the plugin: (1) in the toolbar and (2) u
 4. **Highway Assignment (Alocação em rodovias)**: Performs capacity calculation (HCM 6th Edition) and traffic assignment (AoN or MSA/BPR) on real highway networks.
 
 > **Requirements & Scope for Highway Assignment:**
-> - **GISBR Plugin Requirement**: The Highway Assignment tab requires the **GISBR** plugin (`plugin_dependencies=GisBR`) to fetch official national highway network data (SNV / INDE).
+> - **GISBR Plugin (optional)**: The Highway Assignment tab uses the optional **GISBR** plugin to fetch official national highway network data (SNV / INDE); without it, only the network download is disabled and a one-time dialog suggests installing it.
 > - **Highway Scope Notice**: Developed for rural and interurban highways. Urban crossings inside the network use an approximation notice and are flagged (`escopo = 'urbano'`).
 
 Enjoy!
