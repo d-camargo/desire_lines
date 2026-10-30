@@ -58,7 +58,7 @@ O método de **Frank-Wolfe (FW)** é o algoritmo clássico e consagrado para a r
 * **Parâmetros de Convergência Padrão**:
     - **Iterações máximas**: **100** (configurável até 5000 no painel).
     - **Tolerância do gap relativo**: **0,001** (0.001).
-* **Custo Computacional**: **Excelente**. Cada iteração exige a mesma passada Dijkstra do MSA, mas o cálculo de $\lambda$ ótimo acelera a aproximação ao equilíbrio: em Sioux Falls, a mesma precisão é atingida com cerca de 3× menos iterações (FW 100 it ≈ MSA 300 it; FW 300 it ≈ MSA 1000 it).
+* **Custo Computacional**: **Excelente**. Cada iteração exige a mesma passada Dijkstra do MSA, mas o cálculo de $\lambda$ ótimo acelera a aproximação ao equilíbrio: em Sioux Falls, o mesmo gap relativo é atingido com cerca de 6× menos iterações (FW 50 it: gap 0,0031; o MSA só chega a esse gap na iteração 297, e o gap do FW 100 it, 0,0014, não é alcançado pelo MSA em 300 iterações).
 
 ---
 
@@ -66,7 +66,7 @@ O método de **Frank-Wolfe (FW)** é o algoritmo clássico e consagrado para a r
 
 | Critério | Frank-Wolfe + BPR (Recomendado) | MSA + BPR |
 |---|---|---|
-| **Velocidade de convergência** | **Rápida**: erro médio < 0,5% em 100 iterações e gap < 0,001 por volta de 300 iterações | **Lenta**: passo $1/k$ precisa de ~1000 iterações para atingir o mesmo gap |
+| **Velocidade de convergência** | **Rápida**: erro médio < 0,5% em 100 iterações; em Sioux Falls, gap < 0,001 a partir da iteração 132 | **Lenta**: com passo $1/k$, em Sioux Falls o gap só fica abaixo de 0,001 na iteração 915 |
 | **Passo de atualização** | Ótimo ($\lambda$ via busca linear na função de Beckmann) | Pré-determinado ($1/k$) |
 | **Recomendação de uso** | **Primeira escolha** para qualquer estudo de planejamento, modelagem de tráfego e projetos reais | Uso acadêmico/didático, comparações históricas ou baseline de métodos sem busca linear |
 
@@ -166,5 +166,5 @@ $$\text{erro} = \frac{|v - v_{\text{ref}}|}{v_{\text{ref}}}$$
 ### Conclusões da Validação
 
 1. **Convergência Superior do Frank-Wolfe**: Com **Frank-Wolfe a 300 iterações**, o motor alcança erro médio de apenas **0,14%** (máximo de 0,7%) e TSTT de 7.478.543, praticamente indistinguível da referência analítica (< 0,03% de desvio). O novo padrão de **100 iterações e gap 0,001** oferece um equilíbrio excelente entre velocidade e precisão (erro médio de 0,46%).
-2. **Desempenho do MSA**: O MSA confirma convergência assintótica correta (erro médio de 0,07% em 2000 iterações), mas requer cerca de 3× mais iterações que o Frank-Wolfe para a mesma precisão.
+2. **Desempenho do MSA**: O MSA confirma convergência assintótica correta (erro médio de 0,07% em 2000 iterações), mas requer cerca de 6× mais iterações que o Frank-Wolfe para o mesmo gap relativo (medido em Sioux Falls: FW 50 it ≈ MSA 297 it).
 3. **Importância dos Parâmetros Informados e Mão Única**: As causas principais de divergência em redes calibradas não estão nos algoritmos de caminho mínimo, mas sim em impor mão dupla onde a via é de mão única (`mao_unica`) ou calcular capacidade/tempo livre por fórmulas genéricas quando os valores reais já são conhecidos (`capacidade` e `tempo_livre`).
