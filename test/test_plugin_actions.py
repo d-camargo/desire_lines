@@ -110,6 +110,8 @@ class TestPluginActions(unittest.TestCase):
         mock_box.setText.assert_called_once()
         text_arg = mock_box.setText.call_args[0][0]
         self.assertIn(gisbr_bridge.missing_message(), text_arg)
+        mock_box.open.assert_called_once()
+        mock_box.exec.assert_not_called()
 
     @patch('desire_lines.desirelines.QMessageBox')
     @patch('desire_lines.desirelines.gisbr_bridge.is_available', return_value=False)
@@ -123,6 +125,7 @@ class TestPluginActions(unittest.TestCase):
 
         result = self.plugin._check_gisbr()
         self.assertTrue(result)
+        self.plugin._on_gisbr_box_finished(0)
         self.iface.actionManagePlugins().trigger.assert_called_once()
 
     @patch('desire_lines.desirelines.QMessageBox')
@@ -131,15 +134,10 @@ class TestPluginActions(unittest.TestCase):
         """(d) GISBR absent with checkbox marked -> key is set True, next call returns False without consulting is_available."""
         mock_box = mock_box_cls.return_value
 
-        def check_box_on_exec():
-            cb = mock_box.setCheckBox.call_args[0][0]
-            cb.setChecked(True)
-
-        mock_box.exec.side_effect = check_box_on_exec
-        mock_box.exec_.side_effect = check_box_on_exec
-
         result = self.plugin._check_gisbr()
         self.assertTrue(result)
+        self.plugin._gisbr_cb.setChecked(True)
+        self.plugin._on_gisbr_box_finished(0)
         self.assertTrue(QgsSettings().value('desire_lines/skip_gisbr_check', False, type=bool))
 
         mock_available.reset_mock()
@@ -150,6 +148,26 @@ class TestPluginActions(unittest.TestCase):
         self.assertFalse(result2)
         mock_available.assert_not_called()
         mock_box_cls.assert_not_called()
+
+    @patch('desire_lines.desirelines.QMessageBox')
+    @patch('desire_lines.desirelines.gisbr_bridge.is_available', return_value=False)
+    def test_check_gisbr_not_now_leaves_setting_unset_and_cleans_up(self, mock_available, mock_box_cls):
+        """(e) GISBR absent, click 'Not now' with checkbox unchecked -> setting not saved, action not triggered, _gisbr_box cleared."""
+        mock_box = mock_box_cls.return_value
+        btn_manage = MagicMock()
+        btn_not_now = MagicMock()
+        mock_box.addButton.side_effect = [btn_manage, btn_not_now]
+        mock_box.clickedButton.return_value = btn_not_now
+
+        result = self.plugin._check_gisbr()
+        self.assertTrue(result)
+        self.assertIsNotNone(self.plugin._gisbr_box)
+
+        self.plugin._on_gisbr_box_finished(0)
+
+        self.assertFalse(QgsSettings().value('desire_lines/skip_gisbr_check', False, type=bool))
+        self.iface.actionManagePlugins.assert_not_called()
+        self.assertIsNone(self.plugin._gisbr_box)
 
 
 if __name__ == '__main__':

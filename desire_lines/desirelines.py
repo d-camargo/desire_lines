@@ -51,6 +51,9 @@ class DesireLines:
         # on first run() anyway.
         self.dlg = None
         self.traffic_panel = None
+        self._gisbr_box = None
+        self._gisbr_btn_manage = None
+        self._gisbr_cb = None
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
@@ -209,7 +212,7 @@ class DesireLines:
         QTimer.singleShot(0, self._check_gisbr)
 
     def _check_gisbr(self):
-        """Check if GISBR is available and prompt installation if missing (D2).
+        """Check if GISBR is available and prompt installation if missing (D3).
 
         :returns: True if the prompt message box was shown, False otherwise.
         :rtype: bool
@@ -240,18 +243,31 @@ class DesireLines:
         cb = QCheckBox(self.tr(u"Don't show again"))
         box.setCheckBox(cb)
 
-        box.exec()
-        checked = cb.isChecked()
+        self._gisbr_box = box
+        self._gisbr_btn_manage = btn_manage
+        self._gisbr_cb = cb
 
-        if checked:
-            settings.setValue('desire_lines/skip_gisbr_check', True)
-
-        if box.clickedButton() == btn_manage:
-            action = self.iface.actionManagePlugins()
-            if action is not None:
-                action.trigger()
+        box.finished.connect(self._on_gisbr_box_finished)
+        box.open()
 
         return True
+
+    def _on_gisbr_box_finished(self, _result=None):
+        """Handle GISBR notice dismissal: save setting, open plugin manager if requested."""
+        if self._gisbr_cb is not None and self._gisbr_cb.isChecked():
+            QgsSettings().setValue('desire_lines/skip_gisbr_check', True)
+
+        if self._gisbr_box is not None and self._gisbr_btn_manage is not None:
+            if self._gisbr_box.clickedButton() == self._gisbr_btn_manage:
+                action = self.iface.actionManagePlugins()
+                if action is not None:
+                    action.trigger()
+
+        if self._gisbr_box is not None:
+            self._gisbr_box.deleteLater()
+            self._gisbr_box = None
+        self._gisbr_btn_manage = None
+        self._gisbr_cb = None
 
     def show_traffic_panel(self):
         """Show or toggle the Traffic Assignment dock widget."""
@@ -267,6 +283,11 @@ class DesireLines:
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
+        if self._gisbr_box is not None:
+            self._gisbr_box.deleteLater()
+            self._gisbr_box = None
+            self._gisbr_btn_manage = None
+            self._gisbr_cb = None
         if self.traffic_panel is not None:
             self.iface.removeDockWidget(self.traffic_panel)
             self.traffic_panel.deleteLater()
@@ -287,6 +308,7 @@ class DesireLines:
         if self.first_start is True:
             self.first_start = False
             self.dlg = DesireLinesDialog()
+            self.dlg.setModal(True)
             self.dlg.mMapLayerComboBox_2.setShowCrs(True)
             self.dlg.matrixInsert.setFilter("CSV(*csv)")
             self.dlg.vectorInsert.setFilter("All files (*.*);;GPKG (*.gpkg);;SHP (*.shp)")
@@ -311,10 +333,5 @@ class DesireLines:
             self.dlg.aonZoneIdField.setFilters(QgsFieldProxyModel.Filter.Int)
         # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+        self.dlg.raise_()
+        self.dlg.activateWindow()
