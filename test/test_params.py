@@ -2,7 +2,7 @@
 """Testes unitários para o módulo de parâmetros (params.py)."""
 
 import unittest
-from desire_lines.traffic.params import PARAMS, resolve
+from desire_lines.traffic.params import PARAMS, _get_attribute_from_feature, resolve
 
 
 class TestParamsCatalog(unittest.TestCase):
@@ -117,6 +117,43 @@ class TestParamsResolve(unittest.TestCase):
                             field_map={'capacidade': 'cap_x'})
         self.assertEqual(val['capacidade'], PARAMS['capacidade']['default'])
         self.assertEqual(orig['capacidade'], 'padrao')
+
+
+class TestGetAttributeFromFeature(unittest.TestCase):
+    """Testa busca de atributos em feições com _get_attribute_from_feature."""
+
+    def test_getitem_keyerror_fallback(self):
+        """(a) Objeto com __getitem__ que levanta KeyError para um candidato e devolve valor para outro acha o segundo."""
+        class ContainerWithMissingKey:
+            def __getitem__(self, key):
+                if key == 'campo2':
+                    return 'valor_encontrado'
+                raise KeyError(key)
+
+        feat = ContainerWithMissingKey()
+        val, found = _get_attribute_from_feature(feat, ['campo1', 'campo2'])
+        self.assertTrue(found)
+        self.assertEqual(val, 'valor_encontrado')
+
+    def test_object_without_getitem(self):
+        """(b) Objeto sem __getitem__ retorna (None, False) sem exceção."""
+        class DummyObject:
+            pass
+
+        feat = DummyObject()
+        val, found = _get_attribute_from_feature(feat, ['campo1', 'campo2'])
+        self.assertFalse(found)
+        self.assertIsNone(val)
+
+    def test_getitem_runtimeerror_propagates(self):
+        """(c) __getitem__ que levanta RuntimeError propaga a exceção."""
+        class BuggyContainer:
+            def __getitem__(self, key):
+                raise RuntimeError("Falha interna inesperada")
+
+        feat = BuggyContainer()
+        with self.assertRaises(RuntimeError):
+            _get_attribute_from_feature(feat, ['campo1'])
 
 
 if __name__ == '__main__':

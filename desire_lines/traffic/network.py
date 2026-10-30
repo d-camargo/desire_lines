@@ -310,8 +310,10 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
             if id_field and hasattr(feat, 'attribute'):
                 try:
                     link_id = feat.attribute(id_field)
-                except Exception:
-                    pass
+                except KeyError as exc:
+                    raise ValueError(
+                        f"Link id field '{id_field}' not found in the highway layer"
+                    ) from exc
 
             attr_dict = feat
 

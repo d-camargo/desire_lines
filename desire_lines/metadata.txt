@@ -8,7 +8,7 @@ qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.7.2
+version=0.7.3
 author=Diego Camargo
 email=dg.camargo@proton.me
 
@@ -22,6 +22,9 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.7.3
+    - Fix: errors are no longer silently swallowed when reading link attributes; a missing link id field now raises a clear error instead of falling back to feature ids.
+    - Passes the plugins.qgis.org security scan (0.7.2 was not published).
     0.7.2
     - Fix: QGIS no longer asks to install GISBR when it is already installed (plugin_dependencies removed from metadata).
     - When GISBR is missing, a single window suggests installing it, with a shortcut to the Plugin Manager and a "Don't show again" option.

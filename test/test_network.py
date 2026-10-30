@@ -100,6 +100,41 @@ class TestNetworkModule(unittest.TestCase):
         fw_ids = [arc.arc_id for arc in arcs if arc.forward]
         self.assertEqual(fw_ids, [(10, 'fw'), (20, 'fw')])
 
+    def test_build_network_missing_id_field_raises_value_error(self):
+        """Feição com attribute() que levanta KeyError para id_field inexistente -> ValueError com nome do campo."""
+        class FakeFeature:
+            def geometry(self):
+                return [(0, 0), (1000, 0)]
+
+            def attribute(self, name):
+                raise KeyError(name)
+
+        feat = FakeFeature()
+        with self.assertRaises(ValueError) as ctx:
+            build_network([feat], id_field='nao_existe')
+        self.assertIn('nao_existe', str(ctx.exception))
+        self.assertIsInstance(ctx.exception.__cause__, KeyError)
+
+    def test_build_network_existing_id_field_sets_link_id(self):
+        """Feição com attribute() e id_field existente -> link_id vem do campo."""
+        class FakeFeature:
+            def geometry(self):
+                return [(0, 0), (1000, 0)]
+
+            def id(self):
+                return 42
+
+            def attribute(self, name):
+                if name == 'custom_id':
+                    return 'RODOVIA_01'
+                raise KeyError(name)
+
+        feat = FakeFeature()
+        arcs = build_network([feat], id_field='custom_id')
+        self.assertEqual(len(arcs), 2)
+        for arc in arcs:
+            self.assertEqual(arc.link_id, 'RODOVIA_01')
+
     @patch('desire_lines.traffic.network._run_processing_alg')
     def test_reproject_layer(self, mock_run):
         """Testa que reproject_layer chama native:reprojectlayer com TARGET_CRS."""

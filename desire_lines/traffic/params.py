@@ -190,22 +190,16 @@ def _get_attribute_from_feature(feature, candidates):
     # Se for QgsFeature ou objeto com método attribute/fields
     fields_list = []
     if hasattr(feature, "fields") and callable(feature.fields):
-        try:
-            fields_list = [f.name() for f in feature.fields()]
-        except Exception:
-            fields_list = []
+        fields_list = [f.name() for f in feature.fields()]
 
     if fields_list:
         fields_lower = {f.lower(): f for f in fields_list}
         for cand in candidates:
             if cand.lower() in fields_lower:
                 real_field = fields_lower[cand.lower()]
-                try:
-                    val = feature.attribute(real_field)
-                    if val is not None and val != "" and str(val) != "NULL":
-                        return val, True
-                except Exception:
-                    pass
+                val = feature.attribute(real_field)
+                if val is not None and val != "" and str(val) != "NULL":
+                    return val, True
 
     # Tenta acesso genérico por chave / atributo
     for cand in candidates:
@@ -217,8 +211,9 @@ def _get_attribute_from_feature(feature, candidates):
             val = feature[cand]
             if val is not None and val != "" and str(val) != "NULL":
                 return val, True
-        except Exception:
-            pass
+        except (KeyError, IndexError, TypeError):
+            # Candidato ausente no container ou objeto não indexável
+            continue
 
     return None, False
 
