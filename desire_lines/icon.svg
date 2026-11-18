@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#151E29" />
+      <stop offset="60%" stop-color="#0E141B" />
+      <stop offset="100%" stop-color="#07090C" />
+    </radialGradient>
+
+    <!-- Glassmorphism Gradient Overlay -->
+    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Trail & Glow Gradients -->
+    <linearGradient id="cyanArc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F3FF" />
+      <stop offset="100%" stop-color="#00A8F3" />
+    </linearGradient>
+    <linearGradient id="cyanGreenArc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F3FF" />
+      <stop offset="100%" stop-color="#00FF87" />
+    </linearGradient>
+    <linearGradient id="greenArc" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00FF87" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="amberArc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD200" />
+      <stop offset="100%" stop-color="#FF9000" />
+    </linearGradient>
+
+    <!-- Soft Glow Filter for Trajectories -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Strong Glow Filter for Nodes -->
+    <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Subtle Shadow for Glass/Card Layers -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.65" />
+    </filter>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="100%" height="100%" fill="#ffffff" />
+
+  <!-- Outer Icon Shadow and Boundary -->
+  <g filter="url(#shadow)">
+    <!-- Base Icon Card (Squircle) -->
+    <rect x="100" y="100" width="312" height="312" rx="76" fill="url(#bgGrad)" stroke="#1F2E3D" stroke-width="2" />
+  </g>
+
+  <!-- Topographic & Grid Sub-layer -->
+  <g opacity="0.15">
+    <!-- Grid -->
+    <line x1="100" y1="178" x2="412" y2="178" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+    <line x1="100" y1="256" x2="412" y2="256" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+    <line x1="100" y1="334" x2="412" y2="334" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+    <line x1="178" y1="100" x2="178" y2="412" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+    <line x1="256" y1="100" x2="256" y2="412" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+    <line x1="334" y1="100" x2="334" y2="412" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="2 4" />
+
+    <!-- Contour Elevation Lines -->
+    <path d="M 120,200 Q 150,180 200,210 T 320,180 T 400,230" fill="none" stroke="#FFFFFF" stroke-width="1.5" />
+    <path d="M 110,280 Q 180,260 220,310 T 310,290 T 395,310" fill="none" stroke="#FFFFFF" stroke-width="1.2" />
+    <path d="M 140,130 Q 220,110 290,145 T 380,120" fill="none" stroke="#FFFFFF" stroke-width="1" />
+    <path d="M 130,360 Q 190,380 270,340 T 380,370" fill="none" stroke="#FFFFFF" stroke-width="1" />
+    <path d="M 230,100 C 240,160 190,220 250,260 C 310,300 280,380 320,412" fill="none" stroke="#FFFFFF" stroke-width="0.8" />
+  </g>
+
+  <!-- Glassmorphic Inner Frame -->
+  <rect x="112" y="112" width="288" height="288" rx="64" fill="url(#glassGrad)" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.15" />
+
+  <!-- Flow Trajectories (Desire Lines) with Glows -->
+  <g filter="url(#glow)">
+    <!-- Cyan to Blue Flow -->
+    <path d="M 150,145 C 220,160 190,320 145,350" fill="none" stroke="url(#cyanArc)" stroke-width="5" stroke-linecap="round" />
+    
+    <!-- Long Cyan/Emerald Connecting Arc -->
+    <path d="M 145,350 C 190,260 280,170 350,145" fill="none" stroke="url(#cyanGreenArc)" stroke-width="4.5" stroke-linecap="round" />
+    
+    <!-- emerald/Green Intercept Line -->
+    <path d="M 135,210 C 230,260 280,200 365,230" fill="none" stroke="url(#greenArc)" stroke-width="4.5" stroke-linecap="round" />
+    
+    <!-- Green Flow -->
+    <path d="M 135,210 C 210,260 180,320 220,365" fill="none" stroke="url(#greenArc)" stroke-width="3" stroke-linecap="round" />
+    <path d="M 220,365 C 250,300 290,250 350,145" fill="none" stroke="url(#cyanGreenArc)" stroke-width="3" stroke-linecap="round" />
+    
+    <!-- Warm Amber Trajectory Arcs -->
+    <path d="M 350,145 C 280,220 300,280 350,345" fill="none" stroke="url(#amberArc)" stroke-width="5" stroke-linecap="round" />
+    <path d="M 365,230 C 310,260 310,320 350,345" fill="none" stroke="url(#amberArc)" stroke-width="3" stroke-linecap="round" />
+  </g>
+
+  <!-- Origin & Destination Nodes -->
+  <g filter="url(#strongGlow)">
+    <!-- Cyan Nodes -->
+    <circle cx="150" cy="145" r="5" fill="#00F3FF" />
+    <circle cx="145" cy="350" r="5" fill="#00F3FF" />
+    
+    <!-- Emerald Green Nodes -->
+    <circle cx="135" cy="210" r="5" fill="#00FF87" />
+    <circle cx="220" cy="365" r="5" fill="#00FF87" />
+    <circle cx="365" cy="230" r="5" fill="#10B981" />
+
+    <!-- Amber Nodes -->
+    <circle cx="350" cy="145" r="5" fill="#FFD200" />
+    <circle cx="350" cy="345" r="5" fill="#FF9000" />
+  </g>
+
+  <!-- Subtle Inner Highlight to Accentuate 3D Curvature -->
+  <path d="M 112,176 C 112,140 140,112 176,112 L 336,112 C 348,112 330,120 280,120 L 176,120 C 140,120 120,140 120,176 Z" fill="#FFFFFF" opacity="0.12" />
+</svg>
