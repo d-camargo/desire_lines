@@ -10,7 +10,7 @@ From an origin/destination matrix to desire lines and assigned demand, inside QG
 
 **Version 0.7.4** · QGIS 3.0 to 4.x · Qt5 and Qt6 · GPL-2.0
 
-📖 Documentation (in Portuguese): https://desirelines.dcamargo.com.br
+📖 Documentation: https://desirelines.dcamargo.com.br/en/
 
 ## What it does
 
@@ -54,7 +54,7 @@ The `examples/` folder has two datasets ready to use:
 - `examples/RMSP`: São Paulo Metropolitan Region, 2017 OD survey table and zones GeoPackage.
 - `examples/Microrregioes_MG`: Minas Gerais micro-regions, OD matrix and GeoPackage.
 
-For an end-to-end walkthrough, see the tutorial: https://desirelines.dcamargo.com.br/guias/exemplos/
+For an end-to-end walkthrough, see the tutorial: https://desirelines.dcamargo.com.br/en/guias/exemplos/
 
 ## Development
 
@@ -79,7 +79,7 @@ Posts about the plugin on dcamargo.com.br, newest first:
 
 ## Documentation & support
 
-- Documentation (in Portuguese): https://desirelines.dcamargo.com.br
+- Documentation: https://desirelines.dcamargo.com.br/en/
 - Issues: https://github.com/d-camargo/desire_lines/issues
 - Changelog: [docs/changelog.md](docs/changelog.md) (also in `desire_lines/metadata.txt`)
 

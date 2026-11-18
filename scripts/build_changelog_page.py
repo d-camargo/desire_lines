@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gera docs/changelog.md a partir do campo multilinha changelog= em desire_lines/metadata.txt."""
+"""Gera docs/changelog.md e docs/changelog.en.md a partir do campo multilinha changelog= em desire_lines/metadata.txt."""
 
 import argparse
 from pathlib import Path
@@ -69,19 +69,32 @@ PTBR_NOTES: dict[str, list[str]] = {
 }
 
 
-def build_changelog_markdown(entries: list[tuple[str, list[str]]]) -> str:
-    """Gera o texto em Markdown a partir dos blocos de versão."""
-    md_lines = [
-        "# Histórico de versões",
-        "",
-        "<!-- ATENÇÃO: Esta página é gerada automaticamente por scripts/build_changelog_page.py a partir de desire_lines/metadata.txt. NÃO EDITE DIRETAMENTE. -->",
-        "",
-    ]
+def build_changelog_markdown(
+    entries: list[tuple[str, list[str]]], lang: str = "pt"
+) -> str:
+    """Gera o texto em Markdown a partir dos blocos de versão.
+
+    lang="pt" usa PTBR_NOTES quando existir; lang="en" mantém o texto inglês do metadata.txt.
+    """
+    if lang == "en":
+        md_lines = [
+            "# Changelog",
+            "",
+            "<!-- WARNING: This page is generated automatically by scripts/build_changelog_page.py from desire_lines/metadata.txt. DO NOT EDIT DIRECTLY. -->",
+            "",
+        ]
+    else:
+        md_lines = [
+            "# Histórico de versões",
+            "",
+            "<!-- ATENÇÃO: Esta página é gerada automaticamente por scripts/build_changelog_page.py a partir de desire_lines/metadata.txt. NÃO EDITE DIRETAMENTE. -->",
+            "",
+        ]
 
     for version, lines in entries:
         md_lines.append(f"## {version}")
         md_lines.append("")
-        for line in PTBR_NOTES.get(version, lines):
+        for line in (lines if lang == "en" else PTBR_NOTES.get(version, lines)):
             md_lines.append(line)
         md_lines.append("")
 
@@ -118,6 +131,10 @@ def main() -> None:
     args.destino.parent.mkdir(parents=True, exist_ok=True)
     args.destino.write_text(md_content, encoding="utf-8")
     print(f"Changelog gerado com sucesso em: {args.destino}")
+
+    destino_en = args.destino.with_suffix(".en.md")
+    destino_en.write_text(build_changelog_markdown(entries, "en"), encoding="utf-8")
+    print(f"Changelog (EN) gerado com sucesso em: {destino_en}")
 
 
 if __name__ == "__main__":

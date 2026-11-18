@@ -16,7 +16,7 @@ Nenhum parâmetro de capacidade é aplicado a uma rodovia sem que sua origem sej
 
 ### Hierarquia de Resolução
 
-O módulo [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência rigorosa (Decisão D2):
+O módulo [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência rigorosa (Decisão D2):
 
 ```
 [ Sobrescrita do Usuário ]    ---> Se definido valor global na UI  ---> valor = UI,           src = 'usuario'
@@ -32,7 +32,7 @@ O módulo [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_
 
 ## 2. Tabela Completa de Parâmetros Operacionais e HCM
 
-A tabela abaixo lista os 18 parâmetros gerenciados pelo plugin (definidos em [`traffic/params.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/params.py)), suas unidades, tipos, valores padrão e os campos oficiais buscados automaticamente nas camadas de entrada.
+A tabela abaixo lista os 18 parâmetros gerenciados pelo plugin (definidos em [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py)), suas unidades, tipos, valores padrão e os campos oficiais buscados automaticamente nas camadas de entrada.
 
 | Identificador (`id`) | Rótulo / Parâmetro | Unidade | Tipo | Valor Padrão | Campos Candidatos na Camada (Fonte Oficial) | Descrição / Valores Aceitos |
 |---|---|---|---|---|---|---|

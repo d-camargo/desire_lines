@@ -11,8 +11,35 @@ theme:
   favicon: assets/logo.png
 
 plugins:
-  - search:
-      lang: pt
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: pt
+          name: Português (Brasil)
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+          nav_translations:
+            Início: Home
+            Instalação: Installation
+            Guias: Guides
+            Matriz OD: OD Matrix
+            Linhas de desejo: Desire lines
+            AoN Delaunay: AoN (Delaunay)
+            Alocação em rodovias: Highway assignment
+            Exemplos: Examples
+            Referência: Reference
+            Formatos de entrada: Input formats
+            Campos de saída: Output fields
+            Parâmetros HCM: HCM parameters
+            Métodos: Methods
+            Solução de problemas: Troubleshooting
+            Arquitetura: Architecture
+            Histórico de versões: Changelog
+      fallback_to_default: true
 
 markdown_extensions:
   - admonition
@@ -41,7 +68,6 @@ nav:
   - Solução de problemas: solucao-de-problemas.md
   - Arquitetura: arquitetura.md
   - Histórico de versões: changelog.md
-  - English: en/overview.md
 
 extra_css:
   - stylesheets/extra.css

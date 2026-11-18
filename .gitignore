@@ -43,3 +43,4 @@ docs/topicos/
 site/
 .venv-docs/
 docs/changelog.md
+docs/changelog.en.md

@@ -6,7 +6,7 @@ Esta página detalha os métodos de alocação de tráfego disponíveis no **Des
 
 ## 1. Métodos de Alocação de Tráfego
 
-O plugin disponibiliza três métodos principais de alocação de tráfego sobre redes viárias (definidos no módulo [`traffic/assignment.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/assignment.py)): **All-or-Nothing (AoN)**, **Equilíbrio por Médias Sucessivas (MSA + BPR)** e **Equilíbrio de Frank-Wolfe (FW + BPR)** (método padrão recomendado).
+O plugin disponibiliza três métodos principais de alocação de tráfego sobre redes viárias (definidos no módulo [`traffic/assignment.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/assignment.py)): **All-or-Nothing (AoN)**, **Equilíbrio por Médias Sucessivas (MSA + BPR)** e **Equilíbrio de Frank-Wolfe (FW + BPR)** (método padrão recomendado).
 
 ### 1.1 All-or-Nothing (AoN / Tudo-ou-Nada)
 
@@ -104,8 +104,8 @@ Em cumprimento à **Decisão D3**, o Desire Lines reporta o LOS baseado estritam
 | **E** | `0,90 < v/c <= 1,00` | **Capacidade Máxima**: Operação no limite de capacidade da via; fluxo instável. |
 | **F** | `v/c > 1,00` | **Sobrecarga / Colapso**: Demanda excede a capacidade; formação de gargalos e filas extensas. |
 
-> [!WARNING]
-> **Nota de Aproximação**: O LOS calculado por faixas de `v/c` é um indicador de diagnóstico visual rápido para destacar gargalos na malha rodoviária. Ele não substitui os procedimentos microscópicos de campo do HCM quando há dados detalhados disponíveis.
+!!! warning "Nota de aproximação"
+    O LOS calculado por faixas de `v/c` é um indicador de diagnóstico visual rápido para destacar gargalos na malha rodoviária. Ele não substitui os procedimentos microscópicos de campo do HCM quando há dados detalhados disponíveis.
 
 ---
 
@@ -135,7 +135,7 @@ Para tratar essa limitação com total transparência:
 
 ## 5. Envelope de Desempenho (Decisão D4)
 
-Para contornar as limitações de desempenho do motor de redes C++ nativo do QGIS — que não permite atualizar custos de arcos *in-place* sem recriar todo o grafo a cada iteração de equilíbrio —, o Desire Lines utiliza um **motor de grafo próprio em Python puro** ([`traffic/graph.py`](file:///home/diego/projects/desire-lines/desire_lines/traffic/graph.py)).
+Para contornar as limitações de desempenho do motor de redes C++ nativo do QGIS — que não permite atualizar custos de arcos *in-place* sem recriar todo o grafo a cada iteração de equilíbrio —, o Desire Lines utiliza um **motor de grafo próprio em Python puro** ([`traffic/graph.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/graph.py)).
 
 ### Capacidades e Limites de Processamento
 

@@ -98,7 +98,7 @@ Os centroides são a representação pontual de cada zona de tráfego, servindo 
 
 Para a alocação de tráfego sobre redes reais (aba **Alocação em rodovias**), a camada de vias possui requisitos geométricos e de atributos específicos.
 
-* **Tipo de Geometria:** Linha (`LineString`) ou Multilinhar (`MultiLineString`).
+* **Tipo de Geometria:** Linha (`LineString`) ou Multilinha (`MultiLineString`).
 * **Origem dos Dados:** Camada vetorial de rodovias carregada no QGIS (ex.: SNV/DER) ou baixada diretamente via integração com o plugin **GISBR**.
 * **Atributos de Entrada (Regra D7 — Proveniência):**
     * Os atributos da malha (número de faixas, tipo de pista, velocidade de fluxo livre, etc.) podem ser mapeados a partir de colunas existentes na camada.
