@@ -16,7 +16,7 @@ Nenhum parâmetro de capacidade é aplicado a uma rodovia sem que sua origem sej
 
 ### Hierarquia de Resolução
 
-O módulo [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência rigorosa (Decisão D2):
+O módulo [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py) resolve o valor e a proveniência de cada parâmetro para cada segmento viário através da função `resolve()`, respeitando a seguinte ordem de precedência rigorosa (Decisão D7):
 
 ```
 [ Sobrescrita do Usuário ]    ---> Se definido valor global na UI  ---> valor = UI,           src = 'usuario'
@@ -72,11 +72,11 @@ Os parâmetros `capacidade` e `tempo_livre` adotam o valor **`0.0` como sentinel
 
 ## 3. Procedimento de Sobrescrita e Mapeamento
 
-### 3.1 Mapeamento Direto por Campo na Interface (Decisão D2)
+### 3.1 Mapeamento Direto por Campo na Interface (Decisão D7)
 
 No painel **Alocação em rodovias**, na aba **Parâmetros HCM**, cada parâmetro dispõe de um *combobox* (*field:*) que permite selecionar diretamente qualquer coluna da camada viária.
 
-* **Precedência do mapeamento (D2)**: Quando o usuário seleciona uma coluna no *combobox* de um parâmetro, esse nome de campo é enviado no dicionário `field_map = {param_id: nome_do_campo}` para o método `params.resolve()`.
+* **Precedência do mapeamento (D7)**: Quando o usuário seleciona uma coluna no *combobox* de um parâmetro, esse nome de campo é enviado no dicionário `field_map = {param_id: nome_do_campo}` para o método `params.resolve()`.
 * **Identificação oficial**: Qualquer valor lido com sucesso a partir da coluna mapeada é registrado com proveniência **`oficial`**, mesmo que o nome do campo na sua base seja completamente diferente dos candidatos pré-cadastrados (por exemplo, uma coluna chamada `cap_veic_hora` ou `t_zero`).
 * **Fallback gracioso**: Se o campo mapeado contiver valor nulo, vazio ou inválido em determinada feição, o resolvedor busca a lista de candidatos padrão e, se nada for encontrado, aplica o valor de fábrica (`padrao`).
 

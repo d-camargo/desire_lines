@@ -13,7 +13,7 @@ O plugin disponibiliza três métodos principais de alocação de tráfego sobre
 O método **All-or-Nothing (AoN)** aloca 100% da demanda de cada par Origem/Destino (OD) sobre o caminho mínimo de tempo em fluxo livre (`t0`), calculado via algoritmo de Dijkstra.
 
 * **Mecanismo**: Passada única (1 iteração). Não considera a degradação de velocidade ou o aumento de tempo decorrentes do congestionamento.
-* **Custo Computacional**: **Baixo** (~10× mais rápido que uma alocação iterativa típica).
+* **Custo Computacional**: **Baixo** (uma única passada de Dijkstra por origem; os métodos de equilíbrio repetem essa passada a cada iteração — 100 no padrão do painel).
 * **Interpretação da razão `v/c`**: Como os tempos de viagem não são atualizados no AoN, a capacidade calculada serve apenas para avaliação posterior. Se a razão volume/capacidade resultar maior que 1.0 (`v/c > 1`), **isso representa um diagnóstico direto de sobrecarga/déficit de capacidade física** no segmento viário, e **não** um estado de equilíbrio do sistema.
 
 #### Quando usar o AoN:
@@ -58,7 +58,7 @@ O método de **Frank-Wolfe (FW)** é o algoritmo clássico e consagrado para a r
 * **Parâmetros de Convergência Padrão**:
     - **Iterações máximas**: **100** (configurável até 5000 no painel).
     - **Tolerância do gap relativo**: **0,001** (0.001).
-* **Custo Computacional**: **Excelente**. Cada iteração exige a mesma passada Dijkstra do MSA, mas o cálculo de $\lambda$ ótimo acelera a aproximação ao equilíbrio: em Sioux Falls, o mesmo gap relativo é atingido com cerca de 6× menos iterações (FW 50 it: gap 0,0031; o MSA só chega a esse gap na iteração 297, e o gap do FW 100 it, 0,0014, não é alcançado pelo MSA em 300 iterações).
+* **Custo Computacional**: **Excelente**. Cada iteração exige a mesma passada Dijkstra do MSA, mas o cálculo de $\lambda$ ótimo acelera a aproximação ao equilíbrio: em Sioux Falls, o mesmo gap relativo é atingido com cerca de 6 a 7× menos iterações (FW 50 it: gap 0,0031; o MSA só chega a esse gap na iteração 297, e o gap do FW 100 it, 0,0014, não é alcançado pelo MSA em 300 iterações; e gap < 0,001 na iteração 132 do FW contra 915 do MSA).
 
 ---
 
@@ -81,7 +81,7 @@ O método de **Frank-Wolfe (FW)** é o algoritmo clássico e consagrado para a r
 | **Considera Capacidade?** | Não (rede abstrata sem atributos físicos) | Sim (calcula HCM, mas não realimenta tempo) | Sim (calcula HCM e realimenta tempos via BPR) | Sim (calcula HCM e realimenta tempos via BPR) |
 | **Redistribuição de Rotas?** | Não | Não | Sim (redistribui tráfego com passo 1/k) | Sim (redistribui tráfego com passo ótimo) |
 | **Interpretação do `v/c > 1`** | N/A | Diagnóstico de sobrecarga local | Tendência ao equilíbrio | Tendência ao equilíbrio rigoroso |
-| **Desempenho / Convergência** | Instantâneo | ~10× mais rápido que MSA | Moderado (convergência assintótica lenta) | Rápido e preciso (convergência acelerada) |
+| **Desempenho / Convergência** | Instantâneo | Uma passada (equilíbrio: uma por iteração) | Moderado (convergência assintótica lenta) | Rápido e preciso (convergência acelerada) |
 
 ---
 
@@ -142,7 +142,7 @@ Para contornar as limitações de desempenho do motor de redes C++ nativo do QGI
 * **Tamanho de Malha Recomendado**: Confortável para redes contendo até **~50.000 arcos** direcionados.
 * **Iterações de Equilíbrio**: Excelente desempenho com o padrão de **100 iterações** de Frank-Wolfe ou MSA em áreas de estudo estaduais e regionais.
 * **Dijkstra por Origem**: A busca de menor caminho é executada **uma vez por origem única** (e não por par OD individual), reduzindo drasticamente o tempo total de processamento.
-* **Ganho do AoN**: Como a alocação All-or-Nothing realiza apenas uma passada de Dijkstra, sua execução é aproximadamente **10× a 100× mais rápida** que os métodos de equilíbrio, permitindo processar malhas maiores em poucos segundos.
+* **Ganho do AoN**: Como a alocação All-or-Nothing realiza apenas uma passada de Dijkstra, sua execução é proporcionalmente mais rápida que os métodos de equilíbrio, que repetem essa passada a cada iteração (até **100** no padrão), permitindo processar malhas maiores em poucos segundos.
 
 ---
 
@@ -166,5 +166,5 @@ $$\text{erro} = \frac{|v - v_{\text{ref}}|}{v_{\text{ref}}}$$
 ### Conclusões da Validação
 
 1. **Convergência Superior do Frank-Wolfe**: Com **Frank-Wolfe a 300 iterações**, o motor alcança erro médio de apenas **0,14%** (máximo de 0,7%) e TSTT de 7.478.543, praticamente indistinguível da referência analítica (< 0,03% de desvio). O novo padrão de **100 iterações e gap 0,001** oferece um equilíbrio excelente entre velocidade e precisão (erro médio de 0,46%).
-2. **Desempenho do MSA**: O MSA confirma convergência assintótica correta (erro médio de 0,07% em 2000 iterações), mas requer cerca de 6× mais iterações que o Frank-Wolfe para o mesmo gap relativo (medido em Sioux Falls: FW 50 it ≈ MSA 297 it).
+2. **Desempenho do MSA**: O MSA confirma convergência assintótica correta (erro médio de 0,07% em 2000 iterações), mas requer cerca de 6 a 7× mais iterações que o Frank-Wolfe para o mesmo gap relativo (medido em Sioux Falls: FW 50 it ≈ MSA 297 it; gap < 0,001 em 132 it no FW e 915 it no MSA).
 3. **Importância dos Parâmetros Informados e Mão Única**: As causas principais de divergência em redes calibradas não estão nos algoritmos de caminho mínimo, mas sim em impor mão dupla onde a via é de mão única (`mao_unica`) ou calcular capacidade/tempo livre por fórmulas genéricas quando os valores reais já são conhecidos (`capacidade` e `tempo_livre`).

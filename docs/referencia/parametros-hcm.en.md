@@ -16,7 +16,7 @@ No capacity parameter is applied to a highway without its origin being explicitl
 
 ### Resolution Hierarchy
 
-The [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py) module resolves the value and provenance of each parameter for each road segment through the `resolve()` function, following this strict order of precedence (Decision D2):
+The [`traffic/params.py`](https://github.com/d-camargo/desire_lines/blob/main/desire_lines/traffic/params.py) module resolves the value and provenance of each parameter for each road segment through the `resolve()` function, following this strict order of precedence (Decision D7):
 
 ```
 [ User Override ]             ---> If a global value is set in the UI  ---> value = UI,            src = 'usuario'
@@ -72,11 +72,11 @@ The `capacidade` and `tempo_livre` parameters use the value **`0.0` as an explic
 
 ## 3. Override and Mapping Procedure
 
-### 3.1 Direct Field Mapping in the Interface (Decision D2)
+### 3.1 Direct Field Mapping in the Interface (Decision D7)
 
 In the **Highway assignment** panel, on the **HCM Parameters** tab, each parameter has a *combobox* (*field:*) that lets you select any column of the road layer directly.
 
-* **Mapping precedence (D2)**: When the user selects a column in a parameter's *combobox*, that field name is sent in the dictionary `field_map = {param_id: field_name}` to the `params.resolve()` method.
+* **Mapping precedence (D7)**: When the user selects a column in a parameter's *combobox*, that field name is sent in the dictionary `field_map = {param_id: field_name}` to the `params.resolve()` method.
 * **Official identification**: Any value successfully read from the mapped column is recorded with provenance **`oficial`**, even if the field name in your dataset is completely different from the pre-registered candidates (for example, a column named `cap_veic_hora` or `t_zero`).
 * **Graceful fallback**: If the mapped field holds a null, empty or invalid value on a given feature, the resolver searches the default candidate list and, if nothing is found, applies the factory value (`padrao`).
 

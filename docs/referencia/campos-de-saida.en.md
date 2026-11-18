@@ -52,7 +52,7 @@ It has exactly the same fields as described in the section below (Assignment on 
 * `volume = 0.0`
 * `vc = 0.0`
 * `los = 'A'`
-* `tempo_h = free-flow time (t0)`
+* `tempo_h = t0 / 60` (free-flow time; `t0` is in minutes, `tempo_h` in hours)
 * `atraso_h = 0.0`
 * `metodo = 'capacidade'`
 
@@ -80,8 +80,8 @@ Generated after running the assignment of the OD matrix demand onto the real hig
 | `volume` | Decimal (`Double`) | veh/h | Total traffic volume assigned to the arc after the assignment model is solved. |
 | `vc` | Decimal (`Double`) | dimensionless | Volume/capacity ratio of the arc (`v/c = volume / capacidade`). |
 | `los` | Text (`String`) | - | Operational Level of Service of the segment, from `A` to `F`, derived from the `v/c` indicator. |
-| `tempo_h` | Decimal (`Double`) | h | Total travel time on the segment under the assigned flow, determined by the BPR performance function (`t = t0 * [1 + alfa * (v/c) ^ beta]`). |
-| `atraso_h` | Decimal (`Double`) | h | Per-segment delay caused by congestion relative to free-flow time (`tempo_h - t0`). |
+| `tempo_h` | Decimal (`Double`) | h | Total travel time on the segment under the assigned flow, determined by the BPR performance function (`t = t0 * [1 + alfa * (v/c) ^ beta]`), computed in minutes and written in hours (`tempo_h = t / 60`). |
+| `atraso_h` | Decimal (`Double`) | h | Per-segment delay caused by congestion relative to free-flow time (`tempo_h - t0 / 60`), never negative (`max(0, …)`). |
 | `metodo` | Text (`String`) | - | Assignment algorithm used: `aon` (*All-or-Nothing*), `msa` (*Method of Successive Averages equilibrium*) or `fw` (*Frank-Wolfe equilibrium*). |
 | `escopo` | Text (`String`) | - | Territorial scope classification: `rodoviario` (rural/intercity highway with HCM capacity) or `urbano` (urban crossing kept in the network without capacity recalculation). |
 

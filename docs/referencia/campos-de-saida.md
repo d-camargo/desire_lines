@@ -52,7 +52,7 @@ Possui exatamente os mesmos campos descritos na seção abaixo (Alocação em Ro
 * `volume = 0.0`
 * `vc = 0.0`
 * `los = 'A'`
-* `tempo_h = tempo em fluxo livre (t0)`
+* `tempo_h = t0 / 60` (tempo em fluxo livre; `t0` está em minutos, `tempo_h` em horas)
 * `atraso_h = 0.0`
 * `metodo = 'capacidade'`
 
@@ -80,8 +80,8 @@ Gerada após executar a alocação de demanda da matriz OD sobre a malha rodovi�
 | `volume` | Decimal (`Double`) | veíc/h | Volume total de tráfego alocado sobre o arco após a resolução do modelo de alocação. |
 | `vc` | Decimal (`Double`) | adimensional | Razão Volume/Capacidade do arco (`v/c = volume / capacidade`). |
 | `los` | Texto (`String`) | - | Nível de Serviço (*Level of Service*) operacional do trecho, de `A` a `F`, derivado do indicador `v/c`. |
-| `tempo_h` | Decimal (`Double`) | h | Tempo total de viagem no trecho sob o fluxo alocado, determinado pela função de desempenho BPR (`t = t0 * [1 + alfa * (v/c) ^ beta]`). |
-| `atraso_h` | Decimal (`Double`) | h | Atraso por trecho provocado pelo congestionamento em relação ao tempo em fluxo livre (`tempo_h - t0`). |
+| `tempo_h` | Decimal (`Double`) | h | Tempo total de viagem no trecho sob o fluxo alocado, determinado pela função de desempenho BPR (`t = t0 * [1 + alfa * (v/c) ^ beta]`), calculada em minutos e gravada em horas (`tempo_h = t / 60`). |
+| `atraso_h` | Decimal (`Double`) | h | Atraso por trecho provocado pelo congestionamento em relação ao tempo em fluxo livre (`tempo_h - t0 / 60`), nunca negativo (`max(0, …)`). |
 | `metodo` | Texto (`String`) | - | Algoritmo de alocação empregado: `aon` (*All-or-Nothing*), `msa` (*Successive Averages Equilibrium*) ou `fw` (*Frank-Wolfe Equilibrium*). |
 | `escopo` | Texto (`String`) | - | Classificação do escopo territorial: `rodoviario` (rodovia rural/interurbana com capacidade HCM) ou `urbano` (travessia urbana mantida na rede sem recálculo de capacidade). |
 

@@ -13,7 +13,7 @@ The plugin provides three main methods for assigning traffic onto road networks 
 The **All-or-Nothing (AoN)** method assigns 100% of the demand of each Origin/Destination (OD) pair to the shortest path in free-flow time (`t0`), computed with Dijkstra's algorithm.
 
 * **Mechanism**: Single pass (1 iteration). It does not account for the speed degradation or the increase in travel time caused by congestion.
-* **Computational cost**: **Low** (~10× faster than a typical iterative assignment).
+* **Computational cost**: **Low** (a single Dijkstra pass per origin; equilibrium methods repeat that pass at every iteration — 100 by default in the panel).
 * **Interpreting the `v/c` ratio**: Since travel times are not updated in AoN, the computed capacity serves only for later evaluation. If the volume/capacity ratio is greater than 1.0 (`v/c > 1`), **this is a direct diagnosis of overload/physical capacity deficit** on the road segment, and **not** a system equilibrium state.
 
 #### When to use AoN:
@@ -58,7 +58,7 @@ The **Frank-Wolfe (FW)** method is the classic, well-established algorithm for s
 * **Default convergence parameters**:
     - **Maximum iterations**: **100** (configurable up to 5000 in the panel).
     - **Relative gap tolerance**: **0.001**.
-* **Computational cost**: **Excellent**. Each iteration requires the same Dijkstra pass as MSA, but computing the optimal $\lambda$ speeds up the approach to equilibrium: on Sioux Falls, the same relative gap is reached with about 6× fewer iterations (FW 50 it: gap 0.0031; MSA only reaches that gap at iteration 297, and the gap of FW 100 it, 0.0014, is not reached by MSA within 300 iterations).
+* **Computational cost**: **Excellent**. Each iteration requires the same Dijkstra pass as MSA, but computing the optimal $\lambda$ speeds up the approach to equilibrium: on Sioux Falls, the same relative gap is reached with about 6 to 7× fewer iterations (FW 50 it: gap 0.0031; MSA only reaches that gap at iteration 297, and the gap of FW 100 it, 0.0014, is not reached by MSA within 300 iterations; and gap < 0.001 at iteration 132 for FW versus 915 for MSA).
 
 ---
 
@@ -81,7 +81,7 @@ The **Frank-Wolfe (FW)** method is the classic, well-established algorithm for s
 | **Considers capacity?** | No (abstract network with no physical attributes) | Yes (computes HCM, but does not feed back time) | Yes (computes HCM and feeds back times via BPR) | Yes (computes HCM and feeds back times via BPR) |
 | **Route redistribution?** | No | No | Yes (redistributes traffic with a 1/k step) | Yes (redistributes traffic with an optimal step) |
 | **Interpreting `v/c > 1`** | N/A | Diagnosis of local overload | Tendency toward equilibrium | Tendency toward rigorous equilibrium |
-| **Performance / Convergence** | Instantaneous | ~10× faster than MSA | Moderate (slow asymptotic convergence) | Fast and accurate (accelerated convergence) |
+| **Performance / Convergence** | Instantaneous | One pass (equilibrium: one per iteration) | Moderate (slow asymptotic convergence) | Fast and accurate (accelerated convergence) |
 
 ---
 
@@ -142,7 +142,7 @@ To work around the performance limitations of QGIS's native C++ network engine �
 * **Recommended network size**: Comfortable for networks with up to **~50,000** directed arcs.
 * **Equilibrium iterations**: Excellent performance with the default of **100 iterations** of Frank-Wolfe or MSA on state-level and regional study areas.
 * **Dijkstra per origin**: The shortest-path search runs **once per unique origin** (not per individual OD pair), drastically reducing total processing time.
-* **AoN speed-up**: Since All-or-Nothing assignment performs only a single Dijkstra pass, it runs roughly **10× to 100× faster** than the equilibrium methods, making it possible to process larger networks in a few seconds.
+* **AoN speed-up**: Since All-or-Nothing assignment performs only a single Dijkstra pass, it is proportionally faster than the equilibrium methods, which repeat that pass at every iteration (up to **100** by default), making it possible to process larger networks in a few seconds.
 
 ---
 
@@ -166,5 +166,5 @@ $$\text{error} = \frac{|v - v_{\text{ref}}|}{v_{\text{ref}}}$$
 ### Validation Conclusions
 
 1. **Superior convergence of Frank-Wolfe**: With **Frank-Wolfe at 300 iterations**, the engine reaches a mean error of only **0.14%** (maximum 0.7%) and a TSTT of 7,478,543, practically indistinguishable from the analytical reference (< 0.03% deviation). The new default of **100 iterations and gap 0.001** offers an excellent balance between speed and accuracy (mean error 0.46%).
-2. **MSA performance**: MSA confirms correct asymptotic convergence (mean error 0.07% at 2000 iterations), but needs about 6× more iterations than Frank-Wolfe for the same relative gap (measured on Sioux Falls: FW 50 it ≈ MSA 297 it).
+2. **MSA performance**: MSA confirms correct asymptotic convergence (mean error 0.07% at 2000 iterations), but needs about 6 to 7× more iterations than Frank-Wolfe for the same relative gap (measured on Sioux Falls: FW 50 it ≈ MSA 297 it; gap < 0.001 in 132 it for FW and 915 it for MSA).
 3. **Importance of supplied parameters and one-way links**: The main causes of divergence in calibrated networks are not the shortest-path algorithms, but imposing two-way operation where the road is one-way (`mao_unica`), or computing capacity/free-flow time with generic formulas when the real values are already known (`capacidade` and `tempo_livre`).
