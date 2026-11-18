@@ -38,13 +38,11 @@ into the same output GeoPackage.
     network are flagged with `escopo = 'urbano'` and warned about — they are *not*
     recomputed with an urban procedure.
 
-## Install in three steps
+## Install in two steps
 
-1. In QGIS, open *Plugins → Manage and install plugins* and go to
-   **Install from ZIP**.
-2. Select the downloaded `desire_lines-<version>.zip` and click *Install Plugin*;
-   confirm the QGIS security warning with *Yes*.
-3. Close the plugins window. The plugin shows up as a single button with a
+1. In QGIS, open *Plugins → Manage and install plugins*, search for **Desire Lines** in
+   the *All* tab and click *Install Plugin*.
+2. Close the plugins window. The plugin shows up as a single button with a
    drop-down menu in the plugins toolbar (clicking the icon opens the *Desire Lines*
    dialog; clicking the arrow opens the menu with *Desire Lines* and *Highway Assignment*)
    and under the *Vector → &Desire Lines* menu.

@@ -30,23 +30,7 @@ O plugin tem um diálogo principal com três abas e um painel acoplável:
 
 ### Pelo repositório de plugins do QGIS
 
-No QGIS, vá em **Complementos → Gerenciar e Instalar Complementos**, procure por "Desire Lines" e instale.
-
-### Por arquivo ZIP
-
-Abra o QGIS e vá em **Complementos → Gerenciar e Instalar Complementos**.
-
-![Menu Complementos do QGIS com a opção Gerenciar e Instalar Complementos](https://github.com/user-attachments/assets/e30e8a55-965b-4c18-8943-7e83ba1dccc1)
-
-Na janela de complementos, escolha **Instalar a partir do ZIP** (1), localize o arquivo baixado (2) e clique em **Instalar Complemento**.
-
-![Aba Instalar a partir do ZIP com o arquivo ZIP selecionado](https://github.com/user-attachments/assets/d1580b18-e1e3-43e5-bb0a-afe537055b9e)
-
-Durante a instalação, o QGIS mostra um aviso de segurança. Clique em **Sim** para continuar.
-
-![Aviso de segurança do QGIS durante a instalação do plugin, com o botão Sim](https://github.com/user-attachments/assets/e1766428-7feb-4df4-bc14-8fd33d0f1eb9)
-
-Quando o QGIS confirmar a instalação, feche a janela de complementos.
+No QGIS, vá em **Complementos → Gerenciar e Instalar Complementos**, procure por "Desire Lines" e instale. O QGIS avisa quando sai versão nova.
 
 ### Onde ele aparece
 

@@ -30,23 +30,7 @@ The plugin offers a main dialog with three tabs and a dockable panel:
 
 ### From the QGIS plugin repository
 
-In QGIS, go to **Plugins → Manage and Install Plugins**, search for "Desire Lines" and install it.
-
-### From a ZIP file
-
-Open QGIS and go to **Plugins → Manage and Install Plugins**.
-
-![QGIS Plugins menu with the Manage and Install Plugins option](https://github.com/user-attachments/assets/e30e8a55-965b-4c18-8943-7e83ba1dccc1)
-
-In the Plugins window, choose **Install from ZIP** (1), locate the downloaded file (2) and click **Install Plugin**.
-
-![Install from ZIP tab with the ZIP file selected](https://github.com/user-attachments/assets/d1580b18-e1e3-43e5-bb0a-afe537055b9e)
-
-QGIS shows a security warning during installation. Click **Yes** to continue.
-
-![QGIS security warning during plugin installation, with the Yes button](https://github.com/user-attachments/assets/e1766428-7feb-4df4-bc14-8fd33d0f1eb9)
-
-When QGIS confirms the installation, close the Plugins window.
+In QGIS, go to **Plugins → Manage and Install Plugins**, search for "Desire Lines" and install it. QGIS will notify you when a new version is out.
 
 ### Where it appears
 

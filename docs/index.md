@@ -6,11 +6,11 @@ tráfego, ele gera os centroides, as linhas de desejo e a demanda alocada — so
 rede sintética de vizinhança ou sobre a malha rodoviária real, com capacidade calculada
 pelo procedimento do HCM 6ª edição.
 
-É feito para quem planeja transporte, não para quem programa: tudo acontece em um
-diálogo de quatro abas dentro do QGIS, e cada etapa grava uma tabela no mesmo
-GeoPackage de saída.
+É feito para quem planeja transporte, não para quem programa: tudo acontece dentro do
+QGIS, em um diálogo de três abas e um painel acoplável, e cada etapa grava uma
+tabela no mesmo GeoPackage de saída.
 
-## As quatro abas
+## As ferramentas
 
 - **Matriz OD** ("Origin/Destination Matrix") — importa a matriz OD em CSV e a camada
   de zonas de tráfego, e gera os centroides.
@@ -18,15 +18,17 @@ GeoPackage de saída.
   centroides, com espessura proporcional ao fluxo.
 - **AoN (Delaunay)** — aloca a demanda por All-or-Nothing sobre uma rede sintética de
   Delaunay entre os centroides.
-- **Alocação em rodovias** — calcula a capacidade pelo HCM 6ª edição e aloca a demanda
-  sobre a malha rodoviária real (SNV), por AoN ou por equilíbrio MSA/BPR.
+- **Alocação em rodovias** (painel acoplável) — calcula a capacidade pelo HCM 6ª
+  edição e aloca a demanda sobre a malha rodoviária real (SNV), por AoN, por
+  equilíbrio MSA/BPR ou por equilíbrio Frank-Wolfe (padrão).
 
-!!! warning "Escopo da aba Alocação em rodovias"
-    Esta aba foi desenvolvida para **rodovias rurais e interurbanas**: travessias
-    urbanas dentro da malha são marcadas com `escopo = 'urbano'` e avisadas, não
-    recalculadas por procedimento urbano. Ela também **exige o plugin GISBR**
-    instalado, que é quem busca a malha oficial (SNV/INDE) — sem ele, a aba fica
-    bloqueada.
+!!! warning "Escopo da Alocação em rodovias"
+    Esta ferramenta foi desenvolvida para **rodovias rurais e interurbanas**:
+    travessias urbanas dentro da malha são marcadas com `escopo = 'urbano'` e
+    avisadas, não recalculadas por procedimento urbano. O plugin GISBR é
+    **opcional**: ele só é necessário para baixar a malha oficial (SNV/INDE). Sem
+    ele, o painel continua funcionando com uma camada de malha já carregada no
+    projeto; só o download fica desativado.
 
 ## Por onde começar
 
@@ -34,8 +36,8 @@ GeoPackage de saída.
 
 -   **[Instalação](instalacao.md)**
 
-    Versões de QGIS suportadas, instalação pelo zip ou pelo gerenciador de
-    complementos, e o requisito do GISBR para a aba de rodovias.
+    Versões de QGIS suportadas, instalação pelo repositório oficial do QGIS e o
+    GISBR opcional para baixar a malha rodoviária.
 
 -   **[Guias](guias/matriz-od.md)**
 
