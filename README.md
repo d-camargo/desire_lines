@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Desire_Lines.jpeg" alt="Desire Lines" width="100%">
+</p>
+
 # Desire Lines Plugin for QGIS
 
 📖 Documentação / Docs: https://desirelines.dcamargo.com.br
