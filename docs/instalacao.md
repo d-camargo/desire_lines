@@ -2,20 +2,30 @@
 
 ## Versões de QGIS suportadas
 
-O `desire_lines/metadata.txt` declara suporte de QGIS 3.0 até a série 4.x
-(`qgisMaximumVersion=4.99`). O código já foi ajustado para rodar sob Qt6 (enums
-qualificados, `QMetaType.Type.<X>`), então funciona tanto em builds Qt5 quanto Qt6
-do QGIS — mas o `metadata.txt` não declara `supportsQt6=True`: o ajuste é do
-código, não uma promessa formal do metadado.
+O `desire_lines/metadata.txt` declara suporte do QGIS 3.0 até a série 4.x
+(`qgisMaximumVersion=4.99`) e declara `supportsQt6=True`: o plugin roda tanto em
+builds Qt5 quanto Qt6 do QGIS (o código usa enums qualificados e
+`QMetaType.Type.<X>`).
 
 | Item | Valor |
 |---|---|
 | Versão mínima do QGIS | 3.0 |
 | Versão máxima do QGIS | 4.99 |
 | Qt | Qt5 e Qt6 |
-| Versão atual do plugin | 0.4.0 |
+| Versão atual do plugin | 0.7.4 |
 
-## Instalar pelo ZIP (Gerenciador de Complementos)
+## Instalar pelo repositório oficial do QGIS
+
+O Desire Lines está publicado no [repositório oficial de complementos do
+QGIS](https://plugins.qgis.org/plugins/desire_lines/). No QGIS, abra
+*Complementos → Gerenciar e instalar complementos* ("Plugins → Manage and install
+plugins"), procure por **Desire Lines** na aba *Todos* e clique em *Instalar
+complemento*. É o caminho recomendado: o QGIS avisa quando sai versão nova.
+
+## Instalar pelo ZIP
+
+Use este caminho para instalar uma versão que ainda não está no repositório
+oficial, ou sem acesso à internet no QGIS.
 
 1. Baixe o zip do plugin. No QGIS, abra o menu *Complementos → Gerenciar e
    instalar complementos* ("Plugins → Manage and install plugins").
