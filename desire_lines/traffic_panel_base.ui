@@ -120,17 +120,34 @@
             <item row="5" column="1">
              <widget class="QComboBox" name="taRecorteTipo"/>
             </item>
-            <item row="6" column="0">
-             <widget class="QLabel" name="taLabelRecorte">
-              <property name="text">
-               <string>Region</string>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="1">
-             <widget class="QComboBox" name="taRecorte"/>
-            </item>
-           </layout>
+             <item row="6" column="0">
+              <widget class="QLabel" name="taLabelRecorte">
+               <property name="text">
+                <string>Region</string>
+               </property>
+              </widget>
+             </item>
+             <item row="6" column="1">
+              <widget class="QComboBox" name="taRecorte"/>
+             </item>
+             <item row="7" column="0">
+              <widget class="QLabel" name="taLabelSources">
+               <property name="text">
+                <string>Sources</string>
+               </property>
+              </widget>
+             </item>
+             <item row="7" column="1">
+              <widget class="QListWidget" name="taSources"/>
+             </item>
+             <item row="8" column="0" colspan="2">
+              <widget class="QPushButton" name="taDownloadNetwork">
+               <property name="text">
+                <string>Download network</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
           </widget>
          </item>
          <item>

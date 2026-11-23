@@ -1,13 +1,44 @@
 # coding=utf-8
 """Adaptador fino de integração com o plugin GisBR (D6).
 
-Ordem de tentativa ao buscar a malha rodoviária:
-1. Algoritmo de processamento `gisbr:*` se exposto pelo GisBR;
-2. Fallback importando `gisbr.core.sources` e `gisbr.core.connectors.wfs`;
-3. Se o GisBR não estiver instalado ou falhar, erro explícito com mensagem clara.
+A malha rodoviária vem de `fontes_rodoviarias` + `baixar_fonte`, juntas por
+`malha_gisbr.baixar_malha`; `fetch_road_network` delega para lá. Se o GisBR
+não estiver instalado ou falhar, erro explícito com mensagem clara.
 """
 
 TIPOS_RECORTE = ("rm", "micro", "meso", "macsaud")
+
+# Tabela estática de BBOX por UF em EPSG:4674 com folga de 0.1° para fora (D7).
+# Fonte: Malhas estaduais do IBGE (https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?intrarregiao=UF).
+BBOX_UF = {
+    "AC": (-74.0904, -11.2456, -66.5239, -7.0118),
+    "AL": (-38.3376, -10.5986, -35.0527, -8.7161),
+    "AM": (-73.9016, -9.918, -55.9976, 2.3466),
+    "AP": (-54.9763, -1.3362, -49.7758, 4.6088),
+    "BA": (-46.6768, -18.4372, -37.2411, -8.4328),
+    "CE": (-41.5233, -7.9576, -37.1527, -2.6843),
+    "DF": (-48.3857, -16.15, -47.2085, -15.4018),
+    "ES": (-41.9796, -21.4011, -29.199, -17.7919),
+    "GO": (-53.3485, -19.5981, -45.8072, -12.2954),
+    "MA": (-48.8552, -10.3596, -41.6967, -0.9495),
+    "MG": (-51.1461, -23.0228, -39.7568, -14.1333),
+    "MS": (-58.2686, -24.1682, -50.8242, -17.0663),
+    "MT": (-61.7334, -18.1416, -50.1248, -7.249),
+    "PA": (-58.9983, -9.9412, -45.9618, 2.691),
+    "PB": (-38.8652, -8.403, -34.6932, -5.9259),
+    "PE": (-41.4583, -9.5829, -32.2971, -3.7358),
+    "PI": (-46.1282, -11.0288, -40.2705, -2.6499),
+    "PR": (-54.7199, -26.8171, -47.9235, -22.4163),
+    "RJ": (-44.9893, -23.4676, -40.8579, -20.6632),
+    "RN": (-38.6821, -7.0827, -34.8685, -4.7314),
+    "RO": (-66.9103, -13.7937, -59.6744, -7.8759),
+    "RR": (-64.9253, -1.6806, -58.7869, 5.3718),
+    "RS": (-57.7497, -33.8508, -49.5914, -26.9823),
+    "SC": (-53.9371, -29.4551, -48.2585, -25.8558),
+    "SE": (-38.345, -11.6685, -36.2959, -9.415),
+    "SP": (-53.2101, -25.4089, -44.0614, -19.6799),
+    "TO": (-50.8421, -13.5682, -45.5993, -5.0684),
+}
 
 
 def missing_message():
@@ -45,131 +76,169 @@ def is_available():
     return False
 
 
-def _try_processing_algorithm(bbox, crs, uf=None):
-    """Tenta executar algoritmo do provedor GisBR no QGIS Processing."""
-    try:
-        from qgis.core import QgsApplication
-        import processing
-    except ImportError:
-        return None
-
-    registry = QgsApplication.processingRegistry()
-    if not registry:
-        return None
-
-    candidate_algs = ["gisbr:dnit_snv", "gisbr:road_network", "gisbr:snv"]
-    alg_id = None
-    for algname in candidate_algs:
-        if registry.algorithm(algname):
-            alg_id = algname
-            break
-
-    if not alg_id:
-        return None
-
-    params = {}
-    if bbox is not None:
-        params["BBOX"] = bbox
-    if crs is not None:
-        params["CRS"] = crs
-    if uf is not None:
-        params["UF"] = uf
-
-    try:
-        result = processing.run(alg_id, params)
-        if isinstance(result, dict) and "OUTPUT" in result:
-            return result["OUTPUT"]
-        return result
-    except Exception:
-        return None
-
-
-def _try_wfs_connector(bbox, crs, uf=None):
-    """Tenta carregar a malha através dos conectores WFS internos do GisBR."""
-    try:
-        from gisbr.core.sources import SOURCES
-        from gisbr.core.connectors.wfs import fetch_layer
-    except ImportError:
-        return None
-
-    source_entry = None
-    if uf:
-        for s in SOURCES:
-            if (
-                (s.get("rede") or {}).get("tipo") == "rodoviaria"
-                and uf.upper() in s.get("ufs", [])
-                and s.get("protocolo", "wfs") == "wfs"
-            ):
-                source_entry = s
-                break
-
-    if not source_entry:
-        for s in SOURCES:
-            if s.get("id") == "dnit_snv":
-                source_entry = s
-                break
-
-    if not source_entry:
-        return None
-
-    endpoint = source_entry.get("endpoint")
-    type_name = source_entry.get("type_name")
-    srs = source_entry.get("srs", crs or "EPSG:4674")
-    layer_name = source_entry.get("nome", "Malha Rodoviária")
-
-    try:
-        layer = fetch_layer(
-            endpoint=endpoint,
-            type_name=type_name,
-            layer_name=layer_name,
-            srs=srs,
-            bbox=bbox,
-        )
-        if layer and hasattr(layer, "isValid") and layer.isValid():
-            return layer
-        elif layer and getattr(layer, "error_msg", None):
-            raise RuntimeError(
-                f"Erro ao carregar WFS do GisBR: {layer.error_msg}"
-            )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar conector WFS do GisBR: {exc}")
-
-    return None
-
-
 def fetch_road_network(bbox=None, crs=None, uf=None):
-    """Obtém a malha rodoviária oficial via GisBR (D6).
+    """Obtém a malha rodoviária oficial via GisBR (D1 do plano 0.8.0).
 
-    Ordem de tentativa:
-    1. Processing algorithm `gisbr:<alg>` se existir;
-    2. Fallback direto via conector WFS do GisBR (`gisbr.core.connectors.wfs`);
-    3. Exceção com `missing_message()` se o GisBR não estiver disponível ou falhar.
+    Delega para `malha_gisbr.baixar_malha` (DNIT + bases estaduais da UF,
+    juntas) e devolve só a camada; `crs` é o CRS do `bbox`.
 
     Returns:
-        QgsVectorLayer com a malha rodoviária.
+        QgsVectorLayer com a malha rodoviária unida.
 
     Raises:
-        RuntimeError: Se o GisBR não estiver instalado ou se os métodos falharem.
+        RuntimeError: Se o GisBR não estiver instalado ou se o download falhar.
     """
     if not is_available():
         raise RuntimeError(missing_message())
 
-    # 1. Algoritmo de processamento
-    layer = _try_processing_algorithm(bbox, crs, uf)
-    if layer is not None:
-        return layer
+    from . import malha_gisbr
+    layer, _ = malha_gisbr.baixar_malha(uf, bbox=bbox, bbox_crs=crs)
+    return layer
 
-    # 2. Conector WFS interno
-    layer = _try_wfs_connector(bbox, crs, uf)
-    if layer is not None:
-        return layer
 
-    # 3. Erro explícito se nenhum caminho funcionou
-    raise RuntimeError(
-        f"GisBR está disponível mas não foi possível obter a malha rodoviária. {missing_message()}"
-    )
+def fontes_rodoviarias(uf):
+    """Retorna lista de fontes rodoviárias oficiais aplicáveis à UF (D2).
+
+    Ordem de precedência:
+    1. 'dnit_snv' primeiro (rede federal);
+    2. Fontes com rede.tipo == 'rodoviaria', uf em ufs e
+       protocolo em ('wfs', 'arcgis', 'zip_remoto'), na ordem do catálogo.
+
+    Ficam de fora: fontes sem rede (ex.: IBGE BC250), OSM e protocolos não suportados.
+    Devolve [] se o GisBR não estiver disponível / não puder ser importado.
+
+    Args:
+        uf: Sigla da UF com 2 letras (ex.: 'MG').
+
+    Returns:
+        Lista de dicionários de metadados das fontes.
+    """
+    if not uf:
+        return []
+
+    try:
+        from gisbr.core.sources import SOURCES
+    except ImportError:
+        return []
+
+    uf_upper = str(uf).upper()
+    resultado = []
+    dnit = None
+    for s in SOURCES:
+        if s.get("id") == "dnit_snv":
+            dnit = s
+            break
+
+    if dnit is not None:
+        resultado.append(dnit)
+
+    for s in SOURCES:
+        if s.get("id") == "dnit_snv":
+            continue
+        rede = s.get("rede") or {}
+        if rede.get("tipo") != "rodoviaria":
+            continue
+        ufs = [u.upper() for u in s.get("ufs", [])] if s.get("ufs") else []
+        if uf_upper not in ufs:
+            continue
+        proto = s.get("protocolo")
+        if proto not in ("wfs", "arcgis", "zip_remoto"):
+            continue
+        resultado.append(s)
+
+    return resultado
+
+
+def baixar_fonte(fonte, bbox_4674=None, uf=None):
+    """Baixa uma fonte rodoviária usando o conector apropriado do GisBR (D2, D7, D8).
+
+    Despacha por `fonte['protocolo']`:
+    - 'wfs': gisbr.core.connectors.wfs.fetch_layer (substitui '{uf}' em type_name)
+    - 'arcgis' / 'arcgis_rest': gisbr.core.connectors.arcgis_rest.fetch_layer
+    - 'zip_remoto': gisbr.core.connectors.zip_remoto.fetch_layer
+
+    Args:
+        fonte: Dicionário de metadados da fonte (do catálogo SOURCES do GisBR).
+        bbox_4674: Bounding box (xmin, ymin, xmax, ymax) em EPSG:4674 ou None.
+        uf: Sigla opcional da UF para substituição de '{uf}' em type_name.
+
+    Returns:
+        QgsVectorLayer válido carregado.
+
+    Raises:
+        RuntimeError: Se o GisBR não estiver disponível, se o protocolo não for suportado,
+            ou se a camada retornada for inválida (a mensagem inicia com "{fonte['nome']}: ").
+    """
+    nome = fonte.get("nome", fonte.get("id", "Fonte"))
+    proto = fonte.get("protocolo")
+    srs = fonte.get("srs", "EPSG:4674")
+
+    try:
+        if proto == "wfs":
+            from gisbr.core.connectors import wfs
+
+            type_name = fonte.get("type_name") or ""
+            if "{uf}" in type_name or "{UF}" in type_name:
+                uf_val = uf or (fonte.get("ufs", [None])[0]) or ""
+                type_name = type_name.replace("{uf}", str(uf_val).lower()).replace("{UF}", str(uf_val).upper())
+
+            endpoint = fonte.get("endpoint")
+            cql = fonte.get("cql") or fonte.get("cql_filter")
+            kwargs = {
+                "endpoint": endpoint,
+                "type_name": type_name,
+                "layer_name": nome,
+                "srs": srs,
+                "bbox": bbox_4674,
+            }
+            if cql:
+                kwargs["cql_filter"] = cql
+            layer = wfs.fetch_layer(**kwargs)
+
+        elif proto in ("arcgis", "arcgis_rest"):
+            from gisbr.core.connectors import arcgis_rest
+
+            endpoint = fonte.get("endpoint")
+            layer_id = str(fonte.get("layer_id", "0"))
+            where = fonte.get("where") or fonte.get("cql")
+            layer = arcgis_rest.fetch_layer(
+                endpoint=endpoint,
+                layer_id=layer_id,
+                layer_name=nome,
+                srs=srs,
+                where=where,
+                bbox=bbox_4674,
+            )
+
+        elif proto == "zip_remoto":
+            from gisbr.core.connectors import zip_remoto
+
+            url = fonte.get("url") or fonte.get("endpoint") or fonte.get("origem_url")
+            cache_id = fonte.get("cache_id")
+            subset = fonte.get("subset")
+            layer = zip_remoto.fetch_layer(
+                url=url,
+                layer_name=nome,
+                srs=srs,
+                subset=subset,
+                cache_id=cache_id,
+            )
+
+        else:
+            raise RuntimeError(f"{nome}: protocolo não suportado: {proto}")
+
+    except ImportError as exc:
+        raise RuntimeError(f"{nome}: {missing_message()}") from exc
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"{nome}: {exc}") from exc
+
+    if layer is None or not (hasattr(layer, "isValid") and layer.isValid()):
+        error_msg = getattr(layer, "error_msg", None) or "camada inválida"
+        raise RuntimeError(f"{nome}: {error_msg}")
+
+    return layer
 
 
 def listar_recortes(tipo, uf):

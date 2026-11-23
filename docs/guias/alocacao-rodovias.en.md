@@ -34,7 +34,7 @@ The *Network* group has two mutually exclusive options:
 | Option | What to fill in | When to use |
 |---|---|---|
 | *Use an existing layer* | *Highway layer* and, optionally, *Link id field (optional)* | You already have the network loaded in the project (local file, your own clip) |
-| *Download via GisBR (official SNV/DER network)* | *State (UF)* (**2-letter** code), *Download area* and, if regional, *Region* | You want the official network downloaded on the spot |
+| *Download via GisBR (official SNV/DER network)* | *State (UF)* (**2-letter** code), *Download area*, if regional, *Region*, and the *Download network* button | You want the official network downloaded on the spot; the runs use the downloaded layer |
 
 The *Link id field (optional)* is optional: it makes the `link_id` field of the
 output point back to the identifier of your own dataset. Without it, the
@@ -69,13 +69,42 @@ The four regional options (*Metropolitan area*, *Micro-region*, *Meso-region*
 and *Health macro-region*) require the *UF* (2 letters), which makes the
 plugin dynamically load the regions available for that state, and the mandatory
 choice of an item in the *Region* combo. Until a valid region is selected, the
-run buttons remain disabled.
+download button remains disabled.
 
-The highway source is chosen automatically from the GisBR catalogue: if the UF
-has a registered state road dataset — as is currently the case for Minas Gerais
-(`der_mg_rodovias`) and Goiás (`go_malha_viaria`) — the plugin uses the
-official state network; otherwise it automatically falls back to the federal
-highway network of the National Road System (SNV/DNIT).
+Downloading is triggered by the **Download network** button. When you enter the
+*State (UF)*, the plugin populates the **Sources** list with all official road
+databases available for that state in the GisBR catalogue — the DNIT federal
+network (SNV) and registered state databases (DERs) —, all checked by default.
+You can uncheck any source before starting the download. If downloading any
+checked source fails (for instance, due to server unavailability), the process
+**aborts immediately** with an error message naming the failed source, avoiding
+incomplete network layers.
+
+When more than one source is checked, the plugin performs a **geometric merge
+with precedence**:
+
+- **Precedence DNIT → state DERs**: the federal DNIT network is the primary
+  reference and is included in full; subsequent state networks only contribute
+  segments that do not duplicate roads already present.
+- **Overlap handling**: state segments overlapping the reference network for
+  **≥ 100 m within a 20 m tolerance buffer** are trimmed (subtracted). Short
+  touches at junctions (< 100 m) are preserved to keep junction connectivity,
+  and residual slivers shorter than 50 m are discarded. Planned segments from
+  any source are filtered out beforehand.
+- **Topological stitching (30 m)**: dangling ends within **30 m** of another
+  road are snapped to the closest node (node-to-node) or orthogonally projected,
+  splitting the intersected link at a T-junction. Grade-separated crossings
+  (such as overpasses and underpasses) without nearby dangling ends are **not**
+  connected, preserving the absence of real turning movements.
+
+Each feature in the resulting network receives the traceability attributes
+**`fonte`** (source identifier, e.g. `dnit_snv` or `der_mg_rodovias`) and
+**`ajuste`** (empty for untouched segments, `'aparada'` for trimmed overlaps,
+`'costurada'` for stitched ends, or `'aparada+costurada'`). The remaining source
+fields are unified. The final network is saved in the output GeoPackage as the
+**`malha_gisbr_<uf>`** layer (for example, `malha_gisbr_mg`), loaded directly into
+the QGIS project and automatically selected in *Use an existing layer*, ready
+for capacity calculation and assignment.
 
 When the *Use an existing layer* option is used, the study area is also
 clipped to the extent of the centroids (with a connector buffer), limiting the

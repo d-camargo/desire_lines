@@ -15,6 +15,7 @@ __copyright__ = 'Copyright 2024, Diego Camargo'
 import unittest
 from unittest.mock import patch, MagicMock
 
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QDialog, QScrollArea, QApplication
 
 from desire_lines.traffic_panel import TrafficAssignmentPanel
@@ -299,10 +300,10 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
 
     @patch('desire_lines.traffic_panel.gisbr_bridge.extensao_recorte')
     def test_gisbr_bbox_decides_bbox_for_uf_and_micro(self, mock_extensao):
-        """_gisbr_bbox returns None for 'uf' and the extensao_recorte tuple for 'micro'."""
+        """_gisbr_bbox returns (None, None) for 'uf', the region tuple in 4674 and the centroids' box+CRS (D7)."""
         uf_idx = self.dialog.taRecorteTipo.findData('uf')
         self.dialog.taRecorteTipo.setCurrentIndex(uf_idx)
-        self.assertIsNone(self.dialog._gisbr_bbox(CENTROIDS, 50.0))
+        self.assertEqual(self.dialog._gisbr_bbox(CENTROIDS, 50.0), (None, None))
 
         mock_extensao.return_value = (100.0, 200.0, 300.0, 400.0)
         micro_idx = self.dialog.taRecorteTipo.findData('micro')
@@ -311,51 +312,195 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.dialog.taRecorte.addItem('Microrregião de BH', '3101')
         self.dialog.taRecorte.setCurrentIndex(0)
 
-        bbox = self.dialog._gisbr_bbox(CENTROIDS, 50.0)
+        bbox, crs = self.dialog._gisbr_bbox(CENTROIDS, 50.0)
         mock_extensao.assert_called_with('micro', '3101')
         self.assertEqual(bbox, (100.0, 200.0, 300.0, 400.0))
+        self.assertEqual(crs, 'EPSG:4674')
 
-    def test_tab_state_regional_recorte_controls_and_readiness(self):
-        """taRecorte is enabled only with GisBR + regional type, and network_ready requires currentData."""
+        cent_idx = self.dialog.taRecorteTipo.findData('centroides')
+        self.dialog.taRecorteTipo.setCurrentIndex(cent_idx)
+        bbox, crs = self.dialog._gisbr_bbox(CENTROIDS, 50.0, 'EPSG:31983')
+        self.assertEqual(bbox, self.dialog._traffic_bbox(CENTROIDS, 50.0))
+        self.assertEqual(crs, 'EPSG:31983')
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_tab_state_regional_recorte_controls_and_readiness(self, mock_fontes):
+        """taRecorte is enabled only with GisBR + regional type; readiness follows the layer (D1, D2)."""
+        mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
         with patch('desire_lines.traffic.gisbr_bridge.is_available', return_value=True):
             self.dialog.taNetFromGisbr.setChecked(True)
             self.dialog.taUf.setText('MG')
 
-            # Non-regional (uf): taRecorte disabled, network is ready
+            # Non-regional (uf): taRecorte disabled, download button ready,
+            # but the runs still need a layer
             self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('uf'))
             self.dialog._update_traffic_tab_state()
             self.assertFalse(self.dialog.taRecorte.isEnabled())
             self.assertFalse(self.dialog.taLabelRecorte.isEnabled())
-            self.assertTrue(self.dialog.taRunCapacity.isEnabled())
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
+            self.assertFalse(self.dialog.taRunCapacity.isEnabled())
 
-            # Regional (rm) with empty taRecorte: taRecorte enabled, network NOT ready
+            # Regional (rm) with empty taRecorte: taRecorte enabled, button NOT ready
             self.dialog.taRecorte.clear()
             self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('rm'))
             self.dialog._update_traffic_tab_state()
             self.assertTrue(self.dialog.taRecorte.isEnabled())
             self.assertTrue(self.dialog.taLabelRecorte.isEnabled())
+            self.assertFalse(self.dialog.taDownloadNetwork.isEnabled())
             self.assertFalse(self.dialog.taRunCapacity.isEnabled())
 
-            # Regional with item selected in taRecorte: network ready
+            # Regional with item selected in taRecorte: download button ready
             self.dialog.taRecorte.addItem('Grande BH', '04501')
             self.dialog.taRecorte.setCurrentIndex(0)
             self.dialog._update_traffic_tab_state()
-            self.assertTrue(self.dialog.taRunCapacity.isEnabled())
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
 
     @patch('desire_lines.traffic_panel.gisbr_bridge.extensao_recorte',
            side_effect=RuntimeError('Falha ao obter recorte'))
-    def test_gisbr_bbox_runtime_error_pushes_critical_message(self, mock_extensao):
-        """RuntimeError in extensao_recorte produces a critical message and returns."""
-        with patch('desire_lines.traffic.gisbr_bridge.is_available', return_value=True):
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_gisbr_bbox_runtime_error_pushes_critical_message(
+            self, mock_fontes, mock_extensao):
+        """RuntimeError in extensao_recorte during the download produces a critical message (D7)."""
+        mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True), \
+             patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface), \
+             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha') as mock_baixar:
             self.dialog.taNetFromGisbr.setChecked(True)
             self.dialog.taUf.setText('MG')
             self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('rm'))
             self.dialog.taRecorte.addItem('Grande BH', '04501')
             self.dialog.taRecorte.setCurrentIndex(0)
 
-            self.dialog.run_capacity()
+            self.dialog.run_download()
+            mock_baixar.assert_not_called()
             self.assertEqual(self.dialog.last_message[0], 'critical')
             self.assertIn('Falha ao obter recorte', self.dialog.last_message[1])
+
+    # --- D1/D2/D9: download button and source list ---------------------------
+
+    RELATORIO = {
+        'uf': 'MG', 'bbox_4674': (1.0, 2.0, 3.0, 4.0), 'crs': 'EPSG:31983',
+        'fontes': [{'id': 'dnit_snv', 'nome': 'Malha DNIT', 'baixadas': 3,
+                    'nulas': 0, 'fora_do_recorte': 0, 'limpeza': {},
+                    'removidas_inteiras': 0, 'aparadas': 0,
+                    'metros_removidos': 0.0, 'linhas': 3, 'vazia': False}],
+        'costura': {'no_no': 0, 't': 0, 'total': 0, 'costuradas': 0},
+        'feicoes': 3,
+    }
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_reload_sources_repopulates_on_uf_change(self, mock_fontes):
+        """The source list repopulates when the UF changes; items are checked and carry the id (D2)."""
+        mock_fontes.return_value = [
+            {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
+            {'id': 'der_mg_rodovias', 'nome': 'DER-MG'},
+        ]
+        self.dialog.taUf.setText('MG')
+        mock_fontes.assert_called_with('MG')
+        self.assertEqual(self.dialog.taSources.count(), 2)
+        first = self.dialog.taSources.item(0)
+        self.assertEqual(first.text(), 'Malha DNIT')
+        self.assertEqual(first.data(Qt.ItemDataRole.UserRole), 'dnit_snv')
+        self.assertEqual(first.checkState(), Qt.CheckState.Checked)
+
+        mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
+        self.dialog.taUf.setText('SP')
+        mock_fontes.assert_called_with('SP')
+        self.assertEqual(self.dialog.taSources.count(), 1)
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_download_button_disabled_without_checked_source(self, mock_fontes):
+        """The download button is disabled while no source is checked (D2)."""
+        mock_fontes.return_value = [
+            {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
+            {'id': 'der_mg_rodovias', 'nome': 'DER-MG'},
+        ]
+        with patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True):
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+            self.dialog._update_traffic_tab_state()
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
+
+            for row in range(self.dialog.taSources.count()):
+                self.dialog.taSources.item(row).setCheckState(
+                    Qt.CheckState.Unchecked)
+            self.assertFalse(self.dialog.taDownloadNetwork.isEnabled())
+
+            self.dialog.taSources.item(0).setCheckState(Qt.CheckState.Checked)
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_run_download_selects_layer_and_marks_from_layer(self, mock_fontes):
+        """run_download with baixar_malha mocked selects the layer in taNetworkCombo and marks taNetFromLayer (D1, D9)."""
+        from qgis.core import QgsProject
+        mock_fontes.return_value = [
+            {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
+            {'id': 'der_mg_rodovias', 'nome': 'DER-MG'},
+        ]
+        layer = self._line_layer('EPSG:31983', self.GEO_LINES)
+        QgsProject.instance().addMapLayers([layer])
+        self.addCleanup(lambda: QgsProject.instance().removeMapLayers([layer.id()]))
+        self.dialog._write_layer_to_gpkg = MagicMock(return_value=layer)
+
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface), \
+             patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True), \
+             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha',
+                   return_value=(layer, dict(self.RELATORIO))) as mock_baixar:
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+            self.dialog.run_download()
+
+        mock_baixar.assert_called_once()
+        self.assertEqual(mock_baixar.call_args[0][0], 'MG')
+        self.assertEqual(mock_baixar.call_args[1]['ids_fontes'],
+                         ['dnit_snv', 'der_mg_rodovias'])
+        self.assertIsNone(mock_baixar.call_args[1]['bbox'])
+        self.dialog._write_layer_to_gpkg.assert_called_once_with(
+            layer, 'malha_gisbr_mg')
+        self.assertIs(self.dialog.taNetworkCombo.currentLayer(), layer)
+        self.assertTrue(self.dialog.taNetFromLayer.isChecked())
+        self.assertFalse(self.dialog.taNetFromGisbr.isChecked())
+        self.assertEqual(self.dialog.last_message[0], 'success')
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_run_download_error_is_critical(self, mock_fontes):
+        """A baixar_malha failure becomes a critical message with the error text (D8, D9)."""
+        mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface), \
+             patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True), \
+             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha',
+                   side_effect=RuntimeError('Malha DNIT: falhou')):
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+            self.dialog.run_download()
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('Malha DNIT: falhou', self.dialog.last_message[1])
+
+    def test_run_capacity_does_not_call_gisbr_with_radio_marked(self):
+        """With the GISBR radio marked, run_capacity still works on the layer only (D1)."""
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.gisbr_bridge.fetch_road_network') as mock_fetch, \
+             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha') as mock_baixar, \
+             patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True), \
+             patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('MG')
+            self.dialog.run_capacity()
+        mock_fetch.assert_not_called()
+        mock_baixar.assert_not_called()
+        self.assertEqual(self.dialog.last_message[0], 'critical')
 
     # --- D1/D4: metric working CRS ------------------------------------------
 

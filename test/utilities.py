@@ -2,6 +2,7 @@
 """Common functionality used by regression tests."""
 
 import os
+import atexit
 import logging
 
 
@@ -40,6 +41,12 @@ def get_qgis_app():
         # list raises "TypeError: expected bytes, str found" on construction.
         QGIS_APP = QgsApplication([], gui_flag)
         QGIS_APP.initQgis()
+        # Shut QGIS down while the C++ objects are still valid. Without
+        # exitQgis() the interpreter tears the QgsApplication down after
+        # Qt's own static cleanup, which segfaults at process exit on
+        # QGIS 4.x/Qt6 (the suite prints its summary and then dies with
+        # SIGSEGV, exit code 139).
+        atexit.register(QGIS_APP.exitQgis)
         s = QGIS_APP.showSettings()
         LOGGER.debug(s)
 

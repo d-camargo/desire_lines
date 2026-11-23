@@ -3,9 +3,11 @@ from qgis.PyQt import uic, QtWidgets
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QApplication
 from qgis.core import (
+    Qgis,
     QgsCoordinateTransform,
     QgsFieldProxyModel,
     QgsMapLayerProxyModel,
+    QgsMessageLog,
     QgsPointXY,
     QgsProject,
     QgsRectangle,
@@ -15,11 +17,11 @@ from qgis.utils import iface
 
 try:
     from . import aon, ui_common
-    from .traffic import params, network, graph, outputs, assignment, gisbr_bridge
+    from .traffic import params, network, graph, outputs, assignment, gisbr_bridge, malha_gisbr
 except ImportError:
     import aon, ui_common
     
-    from traffic import params, network, graph, outputs, assignment, gisbr_bridge
+    from traffic import params, network, graph, outputs, assignment, gisbr_bridge, malha_gisbr
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'traffic_panel_base.ui'))
@@ -43,10 +45,13 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.taCentroidsCombo.currentIndexChanged.connect(self._traffic_centroids_changed)
         self.taRunCapacity.clicked.connect(self.run_capacity)
         self.taRunAssign.clicked.connect(self.run_assignment)
+        self.taDownloadNetwork.clicked.connect(self.run_download)
         for radio in (self.taNetFromLayer, self.taNetFromGisbr):
             radio.toggled.connect(self._update_traffic_tab_state)
+        self.taUf.textChanged.connect(self._reload_sources)
         self.taUf.textChanged.connect(self._reload_recortes)
         self.taUf.textChanged.connect(self._update_traffic_tab_state)
+        self.taSources.itemChanged.connect(self._update_traffic_tab_state)
         self.taRecorteTipo.currentIndexChanged.connect(self._reload_recortes)
         self.taRecorteTipo.currentIndexChanged.connect(self._update_traffic_tab_state)
         self.taRecorte.currentIndexChanged.connect(self._update_traffic_tab_state)
@@ -202,14 +207,44 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             for item_id, nome in gisbr_bridge.listar_recortes(tipo, uf):
                 self.taRecorte.addItem(nome, item_id)
 
-    def _update_traffic_tab_state(self):
-        """Enable/disable the highway tab and its buttons (steps 17, D6).
+    def _reload_sources(self):
+        """Populate the source list for the current UF, all checked (D2).
 
-        The tab needs GisBR only when the network is to be downloaded; with an
-        existing layer the rest of the tab works without it. The warning label
-        stays visible while GisBR is missing so the reason is never hidden in a
-        tooltip. Iterations and gap tolerance only apply to equilibrium methods
-        (MSA and FW), so AoN greys them out (D5, D10).
+        The source id goes in ``Qt.ItemDataRole.UserRole`` so the checked
+        ids can be passed to ``malha_gisbr.baixar_malha`` as ``ids_fontes``.
+        """
+        uf = self.taUf.text().strip().upper()
+        self.taSources.blockSignals(True)
+        self.taSources.clear()
+        if len(uf) == 2:
+            for fonte in gisbr_bridge.fontes_rodoviarias(uf):
+                item = QtWidgets.QListWidgetItem(
+                    fonte.get('nome') or fonte.get('id'))
+                item.setData(Qt.ItemDataRole.UserRole, fonte.get('id'))
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked)
+                self.taSources.addItem(item)
+        self.taSources.blockSignals(False)
+
+    def _checked_source_ids(self):
+        """Ids of the sources checked in taSources, in list order (D2)."""
+        ids = []
+        for row in range(self.taSources.count()):
+            item = self.taSources.item(row)
+            if item.checkState() == Qt.CheckState.Checked:
+                ids.append(item.data(Qt.ItemDataRole.UserRole))
+        return ids
+
+    def _update_traffic_tab_state(self):
+        """Enable/disable the highway tab and its buttons (steps 17, D1, D6).
+
+        GisBR is needed only to download the network: capacity and
+        assignment always run on the selected layer (D1). The warning label
+        stays visible while GisBR is missing so the reason is never hidden
+        in a tooltip. Iterations and gap tolerance only apply to
+        equilibrium methods (MSA and FW), so AoN greys them out (D5, D10).
+        The source list follows the UF widgets; the download button further
+        needs a resolved UF, recorte and at least one checked source (D2).
         """
         available = gisbr_bridge.is_available()
         self.taGisbrWarning.setVisible(not available)
@@ -223,7 +258,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                        self.taLabelIdField):
             widget.setEnabled(not from_gisbr)
         for widget in (self.taUf, self.taLabelUf, self.taRecorteTipo,
-                       self.taLabelRecorteTipo):
+                       self.taLabelRecorteTipo, self.taLabelSources,
+                       self.taSources):
             widget.setEnabled(from_gisbr)
 
         is_regional = self.taRecorteTipo.currentData() in gisbr_bridge.TIPOS_RECORTE
@@ -235,10 +271,14 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                        self.taLabelMaxIter, self.taLabelGapTol):
             widget.setEnabled(is_equilibrium)
 
+        uf_ok = len(self.taUf.text().strip()) == 2
         regional_ok = (not is_regional) or bool(self.taRecorte.currentData())
-        network_ready = bool(
-            (from_gisbr and available and len(self.taUf.text().strip()) == 2 and regional_ok)
-            or (not from_gisbr and self.taNetworkCombo.currentLayer()))
+        self.taDownloadNetwork.setEnabled(
+            from_gisbr and available and uf_ok and regional_ok
+            and bool(self._checked_source_ids()))
+
+        # D1: the runs work on the selected layer only — no layer, no run.
+        network_ready = bool(self.taNetworkCombo.currentLayer())
         self.taRunCapacity.setEnabled(network_ready)
         self.taRunAssign.setEnabled(network_ready and bool(
             self.taMatrixCombo.currentLayer()
@@ -586,14 +626,22 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         return (min(xs) - buffer_m, min(ys) - buffer_m,
                 max(xs) + buffer_m, max(ys) + buffer_m)
 
-    def _gisbr_bbox(self, centroids, max_dist_m):
-        """Decide the bounding box for GisBR download according to taRecorteTipo (D5)."""
+    def _gisbr_bbox(self, centroids, max_dist_m, centroids_crs=None):
+        """Decide the download bounding box and its CRS per taRecorteTipo (D5, D7).
+
+        Returns:
+            tuple: ``(bbox, crs)`` — ``(None, None)`` for 'uf' (state
+            extent); the centroids' box in ``centroids_crs`` for
+            'centroides'; the region extent in EPSG:4674 for regional
+            recortes.
+        """
         tipo = self.taRecorteTipo.currentData()
         if tipo == 'uf':
-            return None
+            return None, None
         if tipo == 'centroides':
-            return self._traffic_bbox(centroids, max_dist_m)
-        return gisbr_bridge.extensao_recorte(tipo, self.taRecorte.currentData())
+            return self._traffic_bbox(centroids, max_dist_m), centroids_crs
+        return gisbr_bridge.extensao_recorte(
+            tipo, self.taRecorte.currentData()), 'EPSG:4674'
 
     def _publish_traffic_layer(self, arcs, flows, stats, crs, table):
         """Write the arcs+flows layer to the output GeoPackage and style it by v/c."""
@@ -617,47 +665,101 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 'crossings — read those with care').format(urban)
         return note
 
-    def run_capacity(self):
-        """"Compute capacity": HCM capacity per arc, without assigning (D9)."""
-        road_layer = self.taNetworkCombo.currentLayer()
-        from_gisbr = self.taNetFromGisbr.isChecked()
-        crs = road_layer.crs() if road_layer is not None else None
+    def run_download(self):
+        """Download the official highway mesh via GisBR (D1, D2, D9).
 
-        bbox = None
-        clip_buffer_m = None
+        Synchronous like the runs (D9): wait cursor and message-bar
+        progress. The merged mesh is written as ``malha_gisbr_<uf>`` into
+        the output GeoPackage, added to the project, selected in
+        ``taNetworkCombo`` and the panel switched to the layer mode (D1).
+        """
+        uf = self.taUf.text().strip().upper()
+        centroids, centroids_crs = None, None
         cent_layer = self.taCentroidsCombo.currentLayer()
-        if from_gisbr:
-            centroids = None
-            if cent_layer is not None:
-                centroids, _ = self._traffic_centroid_points(
-                    cent_layer, self.taZoneIdField.currentField())
-            max_dist_m = self.taMaxDist.value()
+        if (self.taRecorteTipo.currentData() == 'centroides'
+                and cent_layer is not None):
+            centroids, _keys = self._traffic_centroid_points(
+                cent_layer, self.taZoneIdField.currentField())
+            centroids_crs = cent_layer.crs()
+
+        progress = self._push_progress(self.tr('Downloading the highway network…'))
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
             try:
-                bbox = self._gisbr_bbox(centroids, max_dist_m)
-            except RuntimeError as exc:
+                bbox, bbox_crs = self._gisbr_bbox(
+                    centroids, self.taMaxDist.value(), centroids_crs)
+            except RuntimeError as err:
                 self._push_message(
-                    self.tr('Could not obtain region extent: {}').format(exc),
+                    self.tr('Could not obtain region extent: {}').format(err),
                     level='critical')
                 return
-            # D4: no centroids reach build_traffic_network here (capacity
-            # adds no connectors), so this falls back to the transformed bbox.
-            if self.taRecorteTipo.currentData() == 'centroides':
-                clip_buffer_m = max_dist_m
+            try:
+                layer, relatorio = malha_gisbr.baixar_malha(
+                    uf, bbox=bbox, bbox_crs=bbox_crs,
+                    ids_fontes=self._checked_source_ids())
+            except Exception as err:
+                self._push_message(
+                    self.tr('Could not download the highway network: {}')
+                    .format(err), level='critical')
+                return
+
+            table = 'malha_gisbr_{}'.format(uf.lower())
+            out_layer = self._write_layer_to_gpkg(layer, table)
+            self.taNetworkCombo.setLayer(
+                out_layer if out_layer is not None else layer)
+            self.taNetFromLayer.setChecked(True)
+
+            self._report_download(relatorio, table)
+        finally:
+            QApplication.restoreOverrideCursor()
+            iface.messageBar().popWidget(progress)
+
+    def _report_download(self, relatorio, table):
+        """Push the D9 download report: message bar + one log line per source."""
+        fontes = relatorio.get('fontes') or []
+        aparadas = sum(f.get('aparadas', 0) + f.get('removidas_inteiras', 0)
+                       for f in fontes)
+        costuradas = (relatorio.get('costura') or {}).get('costuradas', 0)
+        note = self.tr(
+            'Highway network downloaded: {} segment(s) from {} source(s) '
+            'into {}').format(relatorio.get('feicoes', 0), len(fontes), table)
+        if aparadas or costuradas:
+            note += self.tr(' — {} trimmed, {} stitched').format(
+                aparadas, costuradas)
+        note += self.tr(' — per-source report in the Message Log')
+        self._push_message(
+            note, level='warning' if (aparadas or costuradas) else 'success')
+
+        for fonte in fontes:
+            QgsMessageLog.logMessage(
+                self.tr('{}: {} segment(s) kept ({} downloaded, {} outside '
+                        'the area, {} removed whole, {} trimmed, {:.0f} m '
+                        'removed)').format(
+                            fonte.get('nome') or fonte.get('id'),
+                            fonte.get('linhas', 0), fonte.get('baixadas', 0),
+                            fonte.get('fora_do_recorte', 0),
+                            fonte.get('removidas_inteiras', 0),
+                            fonte.get('aparadas', 0),
+                            fonte.get('metros_removidos', 0.0)),
+                'Desire Lines', Qgis.MessageLevel.Info)
+
+    def run_capacity(self):
+        """"Compute capacity": HCM capacity per arc, without assigning (D9).
+
+        Works only on the layer selected in ``taNetworkCombo`` (D1): the
+        download is a separate, explicit action.
+        """
+        road_layer = self.taNetworkCombo.currentLayer()
 
         progress = self._push_progress(self.tr('Computing HCM capacity…'))
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             _g, arcs, _zn, _unc = self.build_traffic_network(
-                road_layer=None if from_gisbr else road_layer,
+                road_layer=road_layer,
                 overrides=self._traffic_overrides(),
                 field_map=self._traffic_field_map(),
                 id_field=self.taIdField.currentField() or None,
-                fetch_gisbr=from_gisbr,
-                bbox=bbox,
-                uf=self.taUf.text().strip() or None,
-                crs=crs,
-                centroids_crs=cent_layer.crs() if cent_layer is not None else None,
-                clip_buffer_m=clip_buffer_m,
+                crs=road_layer.crs() if road_layer is not None else None,
             )
             if not arcs:
                 return
@@ -676,16 +778,16 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
     def run_assignment(self):
         """"Assign": build the network, run AoN or MSA/BPR and publish the flows.
 
-        Logs the method used, the D7 provenance summary, the urban-arc count
-        (D11) and the final gap — 'n/a' under AoN, where capacity never fed
-        back into cost, so v/c above 1 means overload rather than equilibrium.
+        Works only on the layer selected in ``taNetworkCombo`` (D1): the
+        download is a separate, explicit action. Logs the method used, the
+        D7 provenance summary, the urban-arc count (D11) and the final gap
+        — 'n/a' under AoN, where capacity never fed back into cost, so v/c
+        above 1 means overload rather than equilibrium.
         """
         road_layer = self.taNetworkCombo.currentLayer()
         cent_layer = self.taCentroidsCombo.currentLayer()
-        from_gisbr = self.taNetFromGisbr.isChecked()
         method = self._traffic_method()
         max_dist_m = self.taMaxDist.value()
-        crs = (road_layer.crs() if road_layer is not None else cent_layer.crs())
 
         centroids, zone_keys = self._traffic_centroid_points(
             cent_layer, self.taZoneIdField.currentField())
@@ -695,40 +797,25 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 level='critical')
             return
 
-        # D4: the clipping box is built from the centroids only after they are
-        # in the metric working CRS (buffer in real metres). The download bbox
-        # of the 'uf' (None) and regional cases is kept as is.
-        clip_buffer_m = None
-        if from_gisbr:
-            try:
-                bbox = self._gisbr_bbox(centroids, max_dist_m)
-            except RuntimeError as exc:
-                self._push_message(
-                    self.tr('Could not obtain region extent: {}').format(exc),
-                    level='critical')
-                return
-            if self.taRecorteTipo.currentData() == 'centroides':
-                clip_buffer_m = max_dist_m
-        else:
-            bbox = None
-            clip_buffer_m = max_dist_m
+        # D4: the clipping box is built from the centroids only after they
+        # are in the metric working CRS (buffer in real metres).
+        bbox = None
+        clip_buffer_m = max_dist_m
 
         progress = self._push_progress(
             self.tr('Assigning traffic ({})…').format(method.upper()))
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             g, arcs, zone_node, _unconnected = self.build_traffic_network(
-                road_layer=None if from_gisbr else road_layer,
+                road_layer=road_layer,
                 centroids=centroids,
                 zone_keys=zone_keys,
                 overrides=self._traffic_overrides(),
                 field_map=self._traffic_field_map(),
                 max_dist_m=max_dist_m,
                 id_field=self.taIdField.currentField() or None,
-                fetch_gisbr=from_gisbr,
-                bbox=bbox,
-                uf=self.taUf.text().strip() or None,
-                crs=crs,
+                crs=(road_layer.crs() if road_layer is not None
+                     else cent_layer.crs()),
                 centroids_crs=cent_layer.crs(),
                 clip_buffer_m=clip_buffer_m,
             )

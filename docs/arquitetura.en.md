@@ -1,6 +1,6 @@
 # Desire Lines Architecture
 
-This document describes the internal structure of the **Desire Lines** plugin, the QGIS dependency boundary, how to run the test suite, the packaging process and the condensed record of the architecture decisions (**D1–D11**) of the highway assignment module.
+This document describes the internal structure of the **Desire Lines** plugin, the QGIS dependency boundary, how to run the test suite, the packaging process and the condensed record of the architecture decisions (**D1–D12**) of the highway assignment module.
 
 ---
 
@@ -29,6 +29,8 @@ desire_lines/
     ├── params.py              # HCM parameter handling and provenance (src_*)
     ├── assignment.py          # Assignment engines (AoN and MSA + BPR)
     ├── gisbr_bridge.py        # GISBR plugin integration and runtime check
+    ├── malha_gisbr.py         # GISBR network download, clipping and geometric merge
+    ├── merge.py               # Dangling end stitching, cleaning and schema unification (pure Python)
     └── outputs.py             # Output layers (capacidade_hcm/alocacao_*) and v/c styles
 ```
 
@@ -41,6 +43,8 @@ desire_lines/
 - **`ui_common.py`**: Provides the `PluginUiMixin` mixin class with shared interface helper methods (messages, progress bar and GeoPackage writing).
 - **`aon.py`**: GUI-independent module for Tab 3 (AoN Delaunay).
 - **`traffic/`**: Subpackage dedicated to HCM capacity calculation and real highway assignment (`traffic/` remains widget-free, decoupling the calculation engine from the UI).
+- **`traffic/merge.py`**: Pure Python module for line cleaning (discarding planned segments and duplicates), ordered attribute schema unification and topological stitching of dangling ends (`costura_extremidades`).
+- **`traffic/malha_gisbr.py`**: Orchestrates downloading via GISBR, metric CRS reprojection, territorial clipping, geometric overlap subtraction (`subtrai_sobreposicao`) and writing the unified network.
 
 ---
 
@@ -56,6 +60,7 @@ These modules import no QGIS component and can be run/tested in any Python 3 env
 - **`traffic/network.py`**: Builder of the road graph and calculation of the connectors between centroids and network nodes.
 - **`traffic/params.py`**: Parsing rules for HCM parameters and provenance assignment (`src_*`).
 - **`traffic/assignment.py`**: AoN and MSA (Method of Successive Averages) traffic assignment algorithms.
+- **`traffic/merge.py`**: Cleaning invalid geometries and planned segments, exact duplicate elimination, schema unification and topological stitching of dangling ends (node-to-node snapping and orthogonal projection T-splits).
 
 ### 2.2 Modules with a PyQGIS Dependency
 These modules use QGIS classes (`QgsVectorLayer`, `QgsFeature`, `QgsGraphAnalyzer`, etc.) and require an initialised QGIS environment:
@@ -63,6 +68,7 @@ These modules use QGIS classes (`QgsVectorLayer`, `QgsFeature`, `QgsGraphAnalyze
 - **`aon.py`**: Uses native QGIS processing (`native:delaunaytriangulation`, `native:polygonstolines`, etc.) and `QgsGraphAnalyzer` for the synthetic network.
 - **`traffic/outputs.py`**: Builds the output vector layers and applies the `vc`-graduated symbology.
 - **`traffic/gisbr_bridge.py`**: Makes calls via `processing.run('gisbr:...')` or imports internal GISBR modules.
+- **`traffic/malha_gisbr.py`**: Orchestrates calls to GISBR connectors, spatial indexing (`QgsSpatialIndex`), metric reprojection and overlap trimming with `QgsGeometry`.
 - **`desirelines_dialog.py` / `traffic_panel.py` / `ui_common.py` / `desirelines.py`**: Interact directly with the Qt widgets and the user interface.
 
 ---
@@ -112,7 +118,7 @@ Packaging the plugin for publication is automated by `qgis-plugin-ci`.
 
 ---
 
-## 5. Condensed Record of Architecture Decisions (D1–D11)
+## 5. Condensed Record of Architecture Decisions (D1–D12)
 
 The following architecture decisions guided the development of the highway traffic assignment module (`desire_lines/traffic/`):
 
@@ -127,3 +133,4 @@ The following architecture decisions guided the development of the highway traff
 - **D9 — Separate action buttons (Compute capacity vs. Assign)**: Lets the HCM operational capacity be computed and inspected in the attribute table before running the assignment algorithms.
 - **D10 — AoN exposed as a first-class method**: The All-or-Nothing (AoN) method is exposed to the user as a first-class option for preliminary analyses on large networks, besides being the base step of each MSA iteration.
 - **D11 — Flagged urban crossings (`escopo='urbano'`)**: Urban segments in the highway network are not removed, but receive the highway capacity as a declared approximation and are marked `escopo='urbano'` for an alert in the log and on the map.
+- **D12 — Geometric merge with precedence and topological stitching (D3/D4)**: Merging the federal network (DNIT/SNV) and state databases (DER) follows federal precedence, trimming overlapping state segments (intersection ≥ 100 m within a 20 m buffer) and stitching dangling ends to existing nodes or splitting links at T-junctions within 30 m, without connecting grade-separated crossings (overpasses). Features receive traceability attributes (`fonte` and `ajuste`).

@@ -30,7 +30,7 @@ O grupo *Rede* ("Network") tem duas opções, mutuamente exclusivas:
 | Opção | O que preencher | Quando usar |
 |---|---|---|
 | *Usar uma camada existente* ("Use an existing layer") | *Camada de rodovias* ("Highway layer") e, opcionalmente, *Campo de id do link (opcional)* ("Link id field (optional)") | Você já tem a malha carregada no projeto (arquivo local, recorte próprio) |
-| *Baixar via GisBR (malha oficial SNV/DER)* ("Download via GisBR (official SNV/DER network)") | *Estado (UF)* ("State (UF)") (sigla de **2 letras**), *Área de download* ("Download area") e, se regional, *Região* ("Region") | Quer a malha oficial baixada na hora |
+| *Baixar via GisBR (malha oficial SNV/DER)* ("Download via GisBR (official SNV/DER network)") | *Estado (UF)* ("State (UF)") (sigla de **2 letras**), *Área de download* ("Download area"), se regional, *Região* ("Region"), e botão *Baixar malha* ("Download network") | Quer a malha oficial baixada na hora; as execuções usam a camada baixada |
 
 O *Campo de id do link (opcional)* é opcional: serve para o campo `link_id` da saída
 apontar de volta para o identificador da sua base. Sem ele, o plugin gera um
@@ -52,9 +52,17 @@ O combo *Área de download* ("Download area") define a abrangência territorial 
 5. **Mesorregião** ("Meso-region"): recorta a malha pela extensão da mesorregião geográfica (IBGE) selecionada.
 6. **Macrorregião de saúde** ("Health macro-region"): recorta a malha pela extensão da macrorregião de saúde selecionada.
 
-As quatro opções regionais (*Região Metropolitana*, *Microrregião*, *Mesorregião* e *Macrorregião de saúde*) exigem o preenchimento da *UF* (2 letras), que faz o plugin carregar dinamicamente as regiões disponíveis daquele estado, e a escolha obrigatória de um item no combo *Região* ("Region"). Enquanto uma região válida não for selecionada, os botões de execução permanecem desabilitados.
+As quatro opções regionais (*Região Metropolitana*, *Microrregião*, *Mesorregião* e *Macrorregião de saúde*) exigem o preenchimento da *UF* (2 letras), que faz o plugin carregar dinamicamente as regiões disponíveis daquele estado, e a escolha obrigatória de um item no combo *Região* ("Region"). Enquanto uma região válida não for selecionada, o botão de download permanece desabilitado.
 
-A escolha da fonte rodoviária é feita de forma automática a partir do catálogo do GisBR: se a UF possuir base viária estadual cadastrada — como é o caso de Minas Gerais (`der_mg_rodovias`) e Goiás (`go_malha_viaria`) hoje —, o plugin utiliza a malha oficial estadual; caso contrário, recorre automaticamente à malha rodoviária federal do Sistema Nacional de Viação (SNV/DNIT) como reserva (*fallback*).
+O download é acionado pelo botão **Baixar malha** ("Download network"). Ao informar o *Estado (UF)*, o plugin preenche a lista **Fontes** ("Sources") com todas as bases rodoviárias oficiais disponíveis para aquela UF no catálogo do GisBR — a malha federal do DNIT (SNV) e as bases estaduais cadastradas (DERs) —, todas marcadas por padrão. O usuário pode desmarcar qualquer fonte antes de iniciar o download. Caso o download de qualquer uma das fontes marcadas falhe (por exemplo, por indisponibilidade de servidor), o processo é **interrompido imediatamente** com mensagem de erro nomeando a fonte que falhou, evitando gravar malhas incompletas.
+
+Quando mais de uma fonte está marcada, o plugin realiza a **junção geométrica com precedência**:
+
+- **Precedência DNIT → estaduais**: a malha federal do DNIT é a referência principal e entra integralmente; as malhas estaduais subsequentes contribuem apenas com os trechos que não duplicam vias já presentes.
+- **Tratamento de sobreposição**: trechos estaduais sobrepostos à malha de referência ao longo de **≥ 100 m dentro de uma faixa de 20 m** de tolerância são aparados (subtraídos). Toques curtos em entroncamentos (< 100 m) são preservados para manter a integridade das conexões, e fragmentos residuais com menos de 50 m são descartados. Trechos planejados de qualquer fonte são eliminados previamente.
+- **Costura topológica (30 m)**: pontas soltas a **até 30 m** de outra via são conectadas por *snap* na ponta mais próxima (nó-nó) ou projetadas ortogonalmente dividindo a via atingida em uma junção em "T". Cruzamentos em níveis diferentes (como viadutos e passagens em desnível) sem pontas soltas próximas **não** são conectados, preservando a ausência de conversão real.
+
+Cada feição da malha resultante recebe os atributos de rastreabilidade **`fonte`** (identificador da base de origem, como `dnit_snv` ou `der_mg_rodovias`) e **`ajuste`** (vazio para inalterada, `'aparada'` para cortes de sobreposição, `'costurada'` para conexões de pontas, ou `'aparada+costurada'`). Os demais campos das fontes são unificados. A malha final é gravada no GeoPackage de saída como a camada **`malha_gisbr_<uf>`** (por exemplo, `malha_gisbr_mg`), carregada diretamente no projeto QGIS e selecionada automaticamente em *Usar uma camada existente*, pronta para o cálculo de capacidade e a alocação.
 
 Quando utilizada a opção *Usar uma camada existente*, a área de estudo também é recortada pela extensão dos centroides (com buffer de conector), limitando o tamanho da rede e acelerando a montagem do grafo. Se o recorte falhar, o plugin exibe um aviso e segue com a malha inteira.
 

@@ -1,6 +1,6 @@
 # Arquitetura do Desire Lines
 
-Este documento descreve a estrutura interna do plugin **Desire Lines**, a fronteira de dependências do QGIS, a execução da suíte de testes, o processo de empacotamento e o registro condensado das decisões de arquitetura (**D1–D11**) do módulo de alocação rodoviária.
+Este documento descreve a estrutura interna do plugin **Desire Lines**, a fronteira de dependências do QGIS, a execução da suíte de testes, o processo de empacotamento e o registro condensado das decisões de arquitetura (**D1–D12**) do módulo de alocação rodoviária.
 
 ---
 
@@ -29,6 +29,8 @@ desire_lines/
     ├── params.py              # Tratamento de parâmetros HCM e proveniência (src_*)
     ├── assignment.py          # Motores de alocação (AoN e MSA + BPR)
     ├── gisbr_bridge.py        # Integração e checagem em runtime do plugin GISBR
+    ├── malha_gisbr.py         # Download, recorte e junção geométrica de malhas do GISBR
+    ├── merge.py               # Costura de pontas soltas, limpeza e união de esquemas (Python puro)
     └── outputs.py             # Camadas de saída (capacidade_hcm/alocacao_*) e estilos v/c
 ```
 
@@ -41,6 +43,8 @@ desire_lines/
 - **`ui_common.py`**: Provê a classe mixin `PluginUiMixin` com métodos auxiliares de interface compartilhados (mensagens, barra de progresso e gravação em GeoPackage).
 - **`aon.py`**: Módulo independente de GUI para a Aba 3 (AoN Delaunay).
 - **`traffic/`**: Subpacote dedicado ao cálculo de capacidade HCM e alocação rodoviária real (`traffic/` continua sem widget, desacoplando o motor de cálculo da UI).
+- **`traffic/merge.py`**: Funções em Python puro para limpeza de linhas (descarte de trechos planejados e duplicatas), união ordenada de esquemas de atributos e costura topológica de pontas soltas (`costura_extremidades`).
+- **`traffic/malha_gisbr.py`**: Orquestra o download via GISBR, reprojeção para CRS métrico, recorte territorial, subtração geométrica de sobreposição (`subtrai_sobreposicao`) e gravação da malha unificada.
 
 ---
 
@@ -56,6 +60,7 @@ Estes módulos não importam nenhum componente do QGIS e podem ser executados/te
 - **`traffic/network.py`**: Construtor do grafo viário e cálculo dos conectores entre centroides e nós da rede.
 - **`traffic/params.py`**: Regras de parsing de parâmetros HCM e atribuição de proveniência (`src_*`).
 - **`traffic/assignment.py`**: Algoritmos de alocação de tráfego AoN e MSA (Method of Successive Averages).
+- **`traffic/merge.py`**: Limpeza de geometrias e trechos planejados, eliminação de duplicatas exatas, unificação de esquemas e costura topológica de pontas soltas (snap nó-nó e divisões em T por projeção ortogonal).
 
 ### 2.2 Módulos com Dependência PyQGIS
 Estes módulos utilizam classes do QGIS (`QgsVectorLayer`, `QgsFeature`, `QgsGraphAnalyzer`, etc.) e exigem o ambiente QGIS inicializado:
@@ -63,6 +68,7 @@ Estes módulos utilizam classes do QGIS (`QgsVectorLayer`, `QgsFeature`, `QgsGra
 - **`aon.py`**: Utiliza processamento nativo do QGIS (`native:delaunaytriangulation`, `native:polygonstolines`, etc.) e `QgsGraphAnalyzer` para a rede sintética.
 - **`traffic/outputs.py`**: Constrói as camadas vetoriais de saída e aplica a simbologia graduada por `vc`.
 - **`traffic/gisbr_bridge.py`**: Faz chamadas via `processing.run('gisbr:...')` ou importa módulos internos do GISBR.
+- **`traffic/malha_gisbr.py`**: Orquestra chamadas aos conectores do GISBR, indexação espacial (`QgsSpatialIndex`), reprojeção métrica e corte de sobreposições com `QgsGeometry`.
 - **`desirelines_dialog.py` / `traffic_panel.py` / `ui_common.py` / `desirelines.py`**: Interagem diretamente com os widgets Qt e a interface do usuário.
 
 ---
@@ -112,7 +118,7 @@ O empacotamento do plugin para publicação é automatizado pelo `qgis-plugin-ci
 
 ---
 
-## 5. Registro Condensado das Decisões de Arquitetura (D1–D11)
+## 5. Registro Condensado das Decisões de Arquitetura (D1–D12)
 
 As decisões de arquitetura a seguir orientaram o desenvolvimento do módulo de alocação de tráfego em rodovias (`desire_lines/traffic/`):
 
@@ -127,3 +133,4 @@ As decisões de arquitetura a seguir orientaram o desenvolvimento do módulo de 
 - **D9 — Botões de ação separados (Calcular capacidade vs. Alocar)**: Permite que a capacidade operacional HCM seja calculada e inspecionada na tabela de atributos antes de rodar os algoritmos de alocação.
 - **D10 — AoN exposto como método de primeira classe**: O método All-or-Nothing (AoN) é exposto ao usuário como opção de primeira classe para análises preliminares em redes grandes, além de ser a etapa base de cada iteração do MSA.
 - **D11 — Travessias urbanas sinalizadas (`escopo='urbano'`)**: Trechos urbanos na malha rodoviária não são removidos, mas recebem a capacidade rodoviária como aproximação declarada e são marcados como `escopo='urbano'` para alerta no log e no mapa.
+- **D12 — Junção geométrica com precedência e costura topológica (D3/D4)**: A união entre malha federal (DNIT/SNV) e bases estaduais (DER) adota precedência federal, aparando trechos estaduais sobrepostos (interseção ≥ 100 m dentro de buffer de 20 m) e costurando pontas soltas a nós ou dividindo links em T a até 30 m de distância, sem ligar cruzamentos em desnível (viadutos). As feições recebem atributos de rastreabilidade (`fonte` e `ajuste`).

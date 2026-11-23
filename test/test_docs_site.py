@@ -131,10 +131,17 @@ class TestDocsSiteValidation(unittest.TestCase):
             p.relative_to(self.docs_dir).as_posix()
             for p in self.docs_dir.rglob("*.md")
         ]
-        disk_files = {
-            f for f in all_md
-            if f != "changelog.md" and not f.startswith("topicos/") and "topicos/" not in f
-        }
+        # mkdocs-static-i18n (docs_structure: suffix): as páginas de outros
+        # idiomas são sufixos (pagina.en.md) derivadas da nav do idioma padrão
+        # (pt) — nunca aparecem na nav. Normaliza o sufixo para que o
+        # casamento nos dois sentidos continue valendo.
+        disk_files = set()
+        for f in all_md:
+            if f.endswith(".en.md"):
+                f = f[: -len(".en.md")] + ".md"
+            if f == "changelog.md" or f.startswith("topicos/") or "topicos/" in f:
+                continue
+            disk_files.add(f)
 
         self.assertEqual(
             nav_files,
