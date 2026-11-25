@@ -289,6 +289,165 @@ def listar_recortes(tipo, uf):
     return []
 
 
+def _unir_e_transformar_camada(saida, rotulo):
+    """Converte saída (camada ou caminho) em uma única geometria unida em EPSG:4674 (D2).
+
+    Args:
+        saida: QgsVectorLayer ou caminho em disco (str).
+        rotulo: Texto descritivo para mensagens de erro (ex.: "UF 'SP'").
+
+    Returns:
+        QgsGeometry unida em EPSG:4674.
+
+    Raises:
+        RuntimeError: Se a camada for None, inválida, vazia ou sem geometrias
+            válidas (a mensagem inclui o rótulo).
+    """
+    if saida is None:
+        raise RuntimeError(f"Camada nula ao obter limite de {rotulo}")
+
+    if isinstance(saida, str):
+        from qgis.core import QgsVectorLayer
+        layer = QgsVectorLayer(saida, str(rotulo), "ogr")
+    else:
+        layer = saida
+
+    if layer is None or not layer.isValid():
+        raise RuntimeError(f"Camada inválida ao obter limite de {rotulo}")
+
+    from qgis.core import (
+        QgsCoordinateReferenceSystem,
+        QgsCoordinateTransform,
+        QgsCoordinateTransformContext,
+        QgsGeometry,
+    )
+
+    geoms = [f.geometry() for f in layer.getFeatures()
+             if f.hasGeometry() and not f.geometry().isEmpty()]
+    if not geoms:
+        raise RuntimeError(f"Nenhuma geometria válida encontrada ao obter limite de {rotulo}")
+
+    geom_unida = QgsGeometry.unaryUnion(geoms)
+    if geom_unida.isEmpty():
+        raise RuntimeError(f"Geometria resultante vazia ao obter limite de {rotulo}")
+
+    crs_camada = layer.crs()
+    crs_4674 = QgsCoordinateReferenceSystem("EPSG:4674")
+    if crs_camada.isValid() and crs_camada != crs_4674:
+        geom_unida.transform(QgsCoordinateTransform(
+            crs_camada, crs_4674, QgsCoordinateTransformContext()))
+    return geom_unida
+
+
+def limite_uf(uf):
+    """Obtém o polígono do limite da UF em EPSG:4674 via GisBR (D2).
+
+    Executa o algoritmo 'gisbr:read_state' com 'SIMPLIFIED'=True.
+    A saída pode ser QgsVectorLayer ou caminho em disco.
+
+    Args:
+        uf: Sigla da UF (ex.: 'SP').
+
+    Returns:
+        QgsGeometry com a união das feições da UF em EPSG:4674.
+
+    Raises:
+        RuntimeError: Se o GisBR falhar, se a camada for None, vazia ou inválida
+            (a mensagem inclui a UF).
+    """
+    if not uf:
+        raise RuntimeError(f"UF inválida ou não informada: {uf!r}")
+
+    uf_str = str(uf).upper()
+    try:
+        import processing
+        res = processing.run(
+            "gisbr:read_state",
+            {"CODE": uf_str, "SIMPLIFIED": True, "OUTPUT": "TEMPORARY_OUTPUT"},
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Erro ao obter limite para UF {uf_str!r}: {exc}") from exc
+
+    if res is None:
+        raise RuntimeError(f"Nenhum resultado retornado para UF {uf_str!r}")
+
+    saida = res.get("OUTPUT") if isinstance(res, dict) else res
+    if saida is None:
+        raise RuntimeError(f"Saída nula para UF {uf_str!r}")
+
+    return _unir_e_transformar_camada(saida, f"UF {uf_str!r}")
+
+
+def limite_recorte(tipo, id_recorte):
+    """Obtém o polígono do limite de um recorte regional em EPSG:4674 (D2).
+
+    Args:
+        tipo: Um de TIPOS_RECORTE ('rm', 'micro', 'meso', 'macsaud').
+        id_recorte: Identificador do recorte (ex.: '04501').
+
+    Returns:
+        QgsGeometry com a união das feições do recorte em EPSG:4674.
+
+    Raises:
+        ValueError: Se o tipo estiver fora de TIPOS_RECORTE.
+        RuntimeError: Quando não há municípios, em caso de exceção, ou se
+            camada_do_recorte devolver None, camada vazia ou inválida
+            (a mensagem inclui tipo e id_recorte).
+    """
+    if tipo not in TIPOS_RECORTE:
+        raise ValueError(
+            f"Tipo de recorte inválido: {tipo!r}. Esperado um de: {TIPOS_RECORTE}"
+        )
+
+    rotulo = f"recorte tipo={tipo!r}, id={id_recorte!r}"
+    try:
+        from gisbr.core import recorte
+
+        if tipo == "rm":
+            from gisbr.core import regioes_metropolitanas
+            codes = regioes_metropolitanas.codes(id_recorte)
+            if not codes:
+                raise RuntimeError(
+                    f"Nenhum município encontrado para {rotulo}"
+                )
+            rec = recorte.Recorte.de_rm(str(id_recorte), str(id_recorte), codes)
+        elif tipo in ("micro", "meso"):
+            from gisbr.core import divisao_regional
+            munis = divisao_regional.municipios(tipo, id_recorte)
+            codes = [m[0] if isinstance(m, (tuple, list)) else m for m in (munis or [])]
+            if not codes:
+                raise RuntimeError(
+                    f"Nenhum município encontrado para {rotulo}"
+                )
+            rec = recorte.Recorte.de_agregado(tipo, str(id_recorte), str(id_recorte), codes)
+        elif tipo == "macsaud":
+            from gisbr.core import macro_saude
+            munis = macro_saude.municipios(id_recorte)
+            codes = [m[0] if isinstance(m, (tuple, list)) else m for m in (munis or [])]
+            if not codes:
+                raise RuntimeError(
+                    f"Nenhum município encontrado para {rotulo}"
+                )
+            rec = recorte.Recorte.de_agregado(tipo, str(id_recorte), str(id_recorte), codes)
+        else:
+            raise ValueError(f"Tipo de recorte não implementado: {tipo!r}")
+
+        layer = recorte.camada_do_recorte(rec)
+    except ValueError:
+        raise
+    except Exception as exc:
+        if rotulo in str(exc):
+            raise
+        raise RuntimeError(f"Erro ao obter camada para {rotulo}: {exc}") from exc
+
+    if layer is None:
+        raise RuntimeError(
+            f"camada_do_recorte devolveu None para {rotulo}"
+        )
+
+    return _unir_e_transformar_camada(layer, rotulo)
+
+
 def extensao_recorte(tipo, id_recorte):
     """Obtém a extensão geográfica (bbox) de um recorte regional em EPSG:4674 (D3).
 
@@ -302,51 +461,10 @@ def extensao_recorte(tipo, id_recorte):
     Raises:
         ValueError: Se o tipo estiver fora de TIPOS_RECORTE.
         RuntimeError: Quando não há município para o recorte ou se a camada_do_recorte
-            devolver None (a mensagem inclui tipo e id_recorte).
+            devolver None, camada vazia ou exceção (a mensagem inclui tipo e id_recorte).
     """
-    if tipo not in TIPOS_RECORTE:
-        raise ValueError(
-            f"Tipo de recorte inválido: {tipo!r}. Esperado um de: {TIPOS_RECORTE}"
-        )
-
-    from gisbr.core import recorte
-
-    if tipo == "rm":
-        from gisbr.core import regioes_metropolitanas
-        codes = regioes_metropolitanas.codes(id_recorte)
-        if not codes:
-            raise RuntimeError(
-                f"Nenhum município encontrado para recorte tipo={tipo!r}, id={id_recorte!r}"
-            )
-        rec = recorte.Recorte.de_rm(str(id_recorte), str(id_recorte), codes)
-    elif tipo in ("micro", "meso"):
-        from gisbr.core import divisao_regional
-        munis = divisao_regional.municipios(tipo, id_recorte)
-        codes = [m[0] if isinstance(m, (tuple, list)) else m for m in (munis or [])]
-        if not codes:
-            raise RuntimeError(
-                f"Nenhum município encontrado para recorte tipo={tipo!r}, id={id_recorte!r}"
-            )
-        rec = recorte.Recorte.de_agregado(tipo, str(id_recorte), str(id_recorte), codes)
-    elif tipo == "macsaud":
-        from gisbr.core import macro_saude
-        munis = macro_saude.municipios(id_recorte)
-        codes = [m[0] if isinstance(m, (tuple, list)) else m for m in (munis or [])]
-        if not codes:
-            raise RuntimeError(
-                f"Nenhum município encontrado para recorte tipo={tipo!r}, id={id_recorte!r}"
-            )
-        rec = recorte.Recorte.de_agregado(tipo, str(id_recorte), str(id_recorte), codes)
-    else:
-        raise ValueError(f"Tipo de recorte não implementado: {tipo!r}")
-
-    layer = recorte.camada_do_recorte(rec)
-    if layer is None:
-        raise RuntimeError(
-            f"camada_do_recorte devolveu None para recorte tipo={tipo!r}, id={id_recorte!r}"
-        )
-
-    extent = layer.extent()
-    if hasattr(extent, "xMinimum"):
-        return (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum())
-    return (extent[0], extent[1], extent[2], extent[3])
+    geom = limite_recorte(tipo, id_recorte)
+    bbox = geom.boundingBox()
+    if hasattr(bbox, "xMinimum"):
+        return (bbox.xMinimum(), bbox.yMinimum(), bbox.xMaximum(), bbox.yMaximum())
+    return (bbox[0], bbox[1], bbox[2], bbox[3])

@@ -5,8 +5,59 @@ Common UI mixin for Desire Lines QGIS plugin.
 import os
 
 from qgis.PyQt.QtWidgets import QApplication, QProgressBar
-from qgis.core import Qgis, QgsProject, QgsVectorFileWriter
+from qgis.core import (
+    Qgis,
+    QgsCoordinateTransformContext,
+    QgsProject,
+    QgsVectorFileWriter,
+)
 from qgis.utils import iface
+
+
+def write_layer_to_gpkg_file(layer, path, table, transform_context=None):
+    """Write a vector layer into a GeoPackage file as a table.
+
+    Uses CreateOrOverwriteLayer so the new table is added alongside the
+    existing ones (matrix, centroids, Desire_Lines) instead of replacing
+    the whole file.
+
+    Does not touch project or GUI objects (thread-safe for worker tasks).
+
+    :param layer: QgsVectorLayer to write.
+    :param path: Destination GeoPackage file path.
+    :param table: Table name in the GeoPackage.
+    :param transform_context: QgsCoordinateTransformContext (optional).
+    :return: Layer URI formatted as ``"<path>|layername=<table_name>"``.
+    :raises ValueError: If ``table`` is empty.
+    :raises RuntimeError: If the writer fails.
+    """
+    if not table:
+        raise ValueError('table name is required')
+    if transform_context is None:
+        transform_context = QgsCoordinateTransformContext()
+
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = 'GPKG'
+    options.layerName = table
+    if os.path.exists(path):
+        options.actionOnExistingFile = (
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
+        )
+
+    res = QgsVectorFileWriter.writeAsVectorFormatV3(
+        layer, path, transform_context, options
+    )
+    if isinstance(res, tuple) and len(res) >= 2:
+        err_code, err_msg = res[0], res[1]
+    else:
+        err_code, err_msg = res, ''
+
+    if err_code != QgsVectorFileWriter.WriterError.NoError:
+        raise RuntimeError(
+            f"Failed to write layer to GPKG '{path}' (table '{table}'): {err_msg}"
+        )
+
+    return f"{path}|layername={table}"
 
 
 class PluginUiMixin:
@@ -53,19 +104,13 @@ class PluginUiMixin:
         existing ones (matrix, centroids, Desire_Lines) instead of replacing
         the whole file.
         """
-        if not table:
-            raise ValueError('table name is required')
         out_path = self._output_path()
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = 'GPKG'
-        options.layerName = table
-        if os.path.exists(out_path):
-            options.actionOnExistingFile = \
-                QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-        QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer, out_path, QgsProject.instance().transformContext(), options)
-        add_table = out_path + '|layername={}'.format(table)
-        return iface.addVectorLayer(add_table, table, 'ogr')
+        uri = write_layer_to_gpkg_file(
+            layer, out_path, table, QgsProject.instance().transformContext()
+        )
+        if iface is not None:
+            return iface.addVectorLayer(uri, table, 'ogr')
+        return None
 
     def _push_message(self, text, level='warning'):
         """Push a translated message to the QGIS message bar.

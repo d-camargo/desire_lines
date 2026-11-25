@@ -4,6 +4,7 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QApplication
 from qgis.core import (
     Qgis,
+    QgsApplication,
     QgsCoordinateTransform,
     QgsFieldProxyModel,
     QgsMapLayerProxyModel,
@@ -17,11 +18,11 @@ from qgis.utils import iface
 
 try:
     from . import aon, ui_common
-    from .traffic import params, network, graph, outputs, assignment, gisbr_bridge, malha_gisbr
+    from .traffic import params, network, graph, outputs, assignment, gisbr_bridge, download_task
 except ImportError:
     import aon, ui_common
     
-    from traffic import params, network, graph, outputs, assignment, gisbr_bridge, malha_gisbr
+    from traffic import params, network, graph, outputs, assignment, gisbr_bridge, download_task
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'traffic_panel_base.ui'))
@@ -30,6 +31,9 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
+        # D1: running download task; kept so Python does not collect it, and
+        # the download button stays disabled while it exists.
+        self._download_task = None
 
         self._build_traffic_params_ui()
         # QGIS 4/Qt6 can emit layerChanged before currentLayer() reflects the
@@ -275,7 +279,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         regional_ok = (not is_regional) or bool(self.taRecorte.currentData())
         self.taDownloadNetwork.setEnabled(
             from_gisbr and available and uf_ok and regional_ok
-            and bool(self._checked_source_ids()))
+            and bool(self._checked_source_ids())
+            and self._download_task is None)
 
         # D1: the runs work on the selected layer only — no layer, no run.
         network_ready = bool(self.taNetworkCombo.currentLayer())
@@ -666,25 +671,44 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         return note
 
     def run_download(self):
-        """Download the official highway mesh via GisBR (D1, D2, D9).
+        """Download the official highway mesh via GisBR in a QgsTask (D1, D2).
 
-        Synchronous like the runs (D9): wait cursor and message-bar
-        progress. The merged mesh is written as ``malha_gisbr_<uf>`` into
-        the output GeoPackage, added to the project, selected in
-        ``taNetworkCombo`` and the panel switched to the layer mode (D1).
+        Everything that touches the project or the UI is resolved here, on
+        the main thread: boundary polygon (D2) — or the bbox/CRS when there
+        is none (centroid mode) —, transform context, output path and source
+        ids. The download and the GPKG write run in
+        ``download_task.MalhaDownloadTask``; progress and cancel are the QGIS
+        task manager's. ``_on_download_concluido`` publishes the result.
         """
         uf = self.taUf.text().strip().upper()
+        tipo = self.taRecorteTipo.currentData()
         centroids, centroids_crs = None, None
         cent_layer = self.taCentroidsCombo.currentLayer()
-        if (self.taRecorteTipo.currentData() == 'centroides'
-                and cent_layer is not None):
+        if tipo == 'centroides' and cent_layer is not None:
             centroids, _keys = self._traffic_centroid_points(
                 cent_layer, self.taZoneIdField.currentField())
             centroids_crs = cent_layer.crs()
 
-        progress = self._push_progress(self.tr('Downloading the highway network…'))
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        # D2: com limite (UF ou recorte regional) o bbox do pedido sai do
+        # próprio limite em `baixar_malha`; a extensão regional não é
+        # resolvida (nem baixada) uma segunda vez só para ser ignorada.
         try:
+            if tipo == 'uf':
+                limite = gisbr_bridge.limite_uf(uf)
+            elif tipo in gisbr_bridge.TIPOS_RECORTE:
+                limite = gisbr_bridge.limite_recorte(
+                    tipo, self.taRecorte.currentData())
+            else:
+                limite = None
+        except Exception as err:
+            self._push_message(
+                self.tr('Could not obtain the boundary of the area: {}')
+                .format(err), level='critical')
+            return
+
+        if limite is not None:
+            bbox, bbox_crs = None, None
+        else:
             try:
                 bbox, bbox_crs = self._gisbr_bbox(
                     centroids, self.taMaxDist.value(), centroids_crs)
@@ -693,42 +717,66 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                     self.tr('Could not obtain region extent: {}').format(err),
                     level='critical')
                 return
-            try:
-                layer, relatorio = malha_gisbr.baixar_malha(
-                    uf, bbox=bbox, bbox_crs=bbox_crs,
-                    ids_fontes=self._checked_source_ids())
-            except Exception as err:
-                self._push_message(
-                    self.tr('Could not download the highway network: {}')
-                    .format(err), level='critical')
-                return
 
-            table = 'malha_gisbr_{}'.format(uf.lower())
-            out_layer = self._write_layer_to_gpkg(layer, table)
-            self.taNetworkCombo.setLayer(
-                out_layer if out_layer is not None else layer)
-            self.taNetFromLayer.setChecked(True)
+        task = download_task.MalhaDownloadTask(
+            self.tr('Desire Lines — downloading the highway network ({})')
+            .format(uf),
+            uf, bbox, bbox_crs, self._checked_source_ids(), limite,
+            QgsProject.instance().transformContext(), self._output_path(),
+            'malha_gisbr_{}'.format(uf.lower()))
+        task.concluida.connect(self._on_download_concluido)
+        self._download_task = task
+        self._update_traffic_tab_state()
+        QgsApplication.taskManager().addTask(task)
+        self._push_message(
+            self.tr('Downloading the highway network in the background…'),
+            level='info')
 
-            self._report_download(relatorio, table)
-        finally:
-            QApplication.restoreOverrideCursor()
-            iface.messageBar().popWidget(progress)
+    def _on_download_concluido(self, task):
+        """Publish the finished download task on the main thread (D1).
+
+        Success: load ``malha_gisbr_<uf>`` from the GPKG, select it in
+        ``taNetworkCombo``, mark ``taNetFromLayer`` and report. Error is a
+        critical message with its text; cancel is an info, nothing published.
+        """
+        self._download_task = None
+        self._update_traffic_tab_state()
+        if task.cancelado:
+            self._push_message(self.tr('Download cancelled'), level='info')
+            return
+        if task.erro is not None or not task.uri:
+            self._push_message(
+                self.tr('Could not download the highway network: {}')
+                .format(task.erro), level='critical')
+            return
+
+        out_layer = (iface.addVectorLayer(task.uri, task.tabela, 'ogr')
+                     if iface is not None else None)
+        if out_layer is None:
+            self._push_message(
+                self.tr('Could not load the downloaded network from {}')
+                .format(task.uri), level='critical')
+            return
+        self.taNetworkCombo.setLayer(out_layer)
+        self.taNetFromLayer.setChecked(True)
+        self._report_download(task.relatorio, task.tabela)
 
     def _report_download(self, relatorio, table):
-        """Push the D9 download report: message bar + one log line per source."""
+        """Push the D5 download report: message bar + per-source, stitching and timing log lines."""
         fontes = relatorio.get('fontes') or []
-        aparadas = sum(f.get('aparadas', 0) + f.get('removidas_inteiras', 0)
-                       for f in fontes)
+        removidas = sum(f.get('removidas_inteiras', 0) for f in fontes)
+        aparadas = sum(f.get('aparadas', 0) for f in fontes)
         costuradas = (relatorio.get('costura') or {}).get('costuradas', 0)
         note = self.tr(
             'Highway network downloaded: {} segment(s) from {} source(s) '
             'into {}').format(relatorio.get('feicoes', 0), len(fontes), table)
-        if aparadas or costuradas:
-            note += self.tr(' — {} trimmed, {} stitched').format(
-                aparadas, costuradas)
+        if removidas or aparadas or costuradas:
+            note += self.tr(
+                ' — {} removed as duplicates, {} trimmed, {} stitched').format(
+                    removidas, aparadas, costuradas)
         note += self.tr(' — per-source report in the Message Log')
         self._push_message(
-            note, level='warning' if (aparadas or costuradas) else 'success')
+            note, level='warning' if (removidas or aparadas or costuradas) else 'success')
 
         for fonte in fontes:
             QgsMessageLog.logMessage(
@@ -741,6 +789,33 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                             fonte.get('removidas_inteiras', 0),
                             fonte.get('aparadas', 0),
                             fonte.get('metros_removidos', 0.0)),
+                'Desire Lines', Qgis.MessageLevel.Info)
+
+        if relatorio.get('costura') is not None:
+            c = relatorio.get('costura') or {}
+            no_no = c.get('no_no', 0)
+            t = c.get('t', 0)
+            QgsMessageLog.logMessage(
+                self.tr('Stitching: {} node-to-node, {} T').format(no_no, t),
+                'Desire Lines', Qgis.MessageLevel.Info)
+
+        if relatorio.get('tempos_s'):
+            tempos = relatorio['tempos_s']
+            dl = tempos.get('download')
+            if isinstance(dl, dict):
+                dl_parts = ['{}: {:.1f}s'.format(k, v) for k, v in dl.items()]
+                dl_str = '{:.1f}s ({})'.format(sum(dl.values()), ', '.join(dl_parts)) if dl_parts else '{:.1f}s'.format(sum(dl.values()))
+            elif isinstance(dl, (int, float)):
+                dl_str = '{:.1f}s'.format(dl)
+            else:
+                dl_str = '0.0s'
+            juncao = tempos.get('juncao', 0.0)
+            costura = tempos.get('costura', 0.0)
+            camada = tempos.get('camada', 0.0)
+            total = tempos.get('total', 0.0)
+            QgsMessageLog.logMessage(
+                self.tr('Phase times: download {}, merge {:.1f}s, stitch {:.1f}s, layer {:.1f}s (total {:.1f}s)').format(
+                    dl_str, juncao, costura, camada, total),
                 'Desire Lines', Qgis.MessageLevel.Info)
 
     def run_capacity(self):

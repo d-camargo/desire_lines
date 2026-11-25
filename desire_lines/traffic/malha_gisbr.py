@@ -9,9 +9,11 @@
   recorta, reprojeta, limpa, junta e costura, e devolve uma camada em memória.
 """
 
+import time
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
+    QgsCoordinateTransformContext,
     QgsFeature,
     QgsGeometry,
     QgsPointXY,
@@ -31,6 +33,20 @@ TOL_SOBREPOSICAO_M = 20.0
 MIN_SOBREPOSICAO_M = 100.0
 MIN_PEDACO_M = 50.0
 TOL_COSTURA_M = 30.0
+TOL_LIMITE_M = 500.0
+
+
+class DownloadCancelado(RuntimeError):
+    """Exceção levantada quando o download ou processamento da malha é cancelado (D4)."""
+    pass
+
+
+def _checar_cancelamento(feedback):
+    """Levanta `DownloadCancelado` se feedback tiver `isCanceled()` True (D4)."""
+    if feedback is not None:
+        is_canceled = getattr(feedback, 'isCanceled', None)
+        if callable(is_canceled) and is_canceled():
+            raise DownloadCancelado('Download da malha cancelado pelo usuário.')
 
 # Tipo do campo (valor numérico comum a QVariant.Type e QMetaType.Type) ->
 # nome usado por `merge.uniao_campos`; o que não estiver aqui vira String (D6).
@@ -172,7 +188,14 @@ def _crs(valor):
     return QgsCoordinateReferenceSystem(str(valor))
 
 
-def _bbox_4674(uf, bbox, bbox_crs, crs_4674):
+def _obter_contexto(transform_context=None):
+    """Contexto de transformação CRS: o recebido ou lido do projeto se None (D4)."""
+    if transform_context is not None:
+        return transform_context
+    return QgsProject.instance().transformContext()
+
+
+def _bbox_4674(uf, bbox, bbox_crs, crs_4674, transform_context=None):
     """bbox do pedido em EPSG:4674 (D7); `None` vira a extensão da UF."""
     if bbox is None:
         if uf not in gisbr_bridge.BBOX_UF:
@@ -181,8 +204,9 @@ def _bbox_4674(uf, bbox, bbox_crs, crs_4674):
     rect = QgsRectangle(bbox) if isinstance(bbox, QgsRectangle) else QgsRectangle(*bbox)
     origem = _crs(bbox_crs) if bbox_crs else crs_4674
     if origem != crs_4674:
+        ctx = _obter_contexto(transform_context)
         rect = QgsCoordinateTransform(
-            origem, crs_4674, QgsProject.instance()).transformBoundingBox(rect)
+            origem, crs_4674, ctx).transformBoundingBox(rect)
     return rect
 
 
@@ -226,9 +250,10 @@ def _pts_de(geom):
     return saida
 
 
-def _linhas_da_fonte(camada, fonte_id, rect_4674, para_4674, para_metrico):
-    """Recorta pelo bbox (4674), reprojeta e extrai linhas simples 2D (D5, D7)."""
-    caixa = QgsGeometry.fromRect(rect_4674)
+def _linhas_da_fonte(camada, fonte_id, rect_4674, para_4674, para_metrico,
+                     geom_recorte=None, engine_recorte=None):
+    """Recorta pelo limite ou bbox (4674), reprojeta e extrai linhas simples 2D (D2, D5, D7)."""
+    caixa = QgsGeometry.fromRect(rect_4674) if (engine_recorte is None and rect_4674 is not None) else None
     nomes = camada.fields().names()
     linhas = []
     nulas = fora = 0
@@ -240,14 +265,31 @@ def _linhas_da_fonte(camada, fonte_id, rect_4674, para_4674, para_metrico):
         geom = QgsGeometry(geom)
         if para_4674 is not None:
             geom.transform(para_4674)
-        if not geom.boundingBox().intersects(rect_4674) or not geom.intersects(caixa):
+
+        if engine_recorte is not None:
+            geom.transform(para_metrico)
+            if not engine_recorte.intersects(geom.constGet()):
+                fora += 1
+                continue
+            if not engine_recorte.contains(geom.constGet()):
+                geom = geom.intersection(geom_recorte)
+                if geom.isNull() or geom.isEmpty():
+                    fora += 1
+                    continue
+        else:
+            if not geom.boundingBox().intersects(rect_4674) or not geom.intersects(caixa):
+                fora += 1
+                continue
+            if not caixa.contains(geom):
+                geom = geom.intersection(caixa)
+            geom.transform(para_metrico)
+
+        attrs = {n: _valor_py(v) for n, v in zip(nomes, feat.attributes())}
+        pts_lista = _pts_de(geom)
+        if engine_recorte is not None and not pts_lista:
             fora += 1
             continue
-        if not caixa.contains(geom):
-            geom = geom.intersection(caixa)
-        geom.transform(para_metrico)
-        attrs = {n: _valor_py(v) for n, v in zip(nomes, feat.attributes())}
-        for pts in _pts_de(geom):
+        for pts in pts_lista:
             linhas.append({'pts': pts, 'attrs': attrs, 'fonte': fonte_id,
                            'ajuste': ''})
     return linhas, nulas, fora
@@ -262,15 +304,17 @@ def _progresso(feedback, pct, msg):
         feedback.pushInfo(msg)
 
 
-def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None):
+def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None,
+                 limite=None, transform_context=None):
     """Baixa e junta as malhas rodoviárias da UF via GISBR (D1, D3–D8).
 
     Pipeline: fontes da UF na ordem de D2 (filtradas por `ids_fontes`) ->
-    bbox em EPSG:4674 (D7) -> download de cada fonte (falha aborta, D8) ->
-    recorte pelo bbox -> reprojeção para `aon.pick_metric_crs` -> linhas
-    simples 2D -> `limpa_linhas` com o `rede.excluir` da fonte ->
-    `subtrai_sobreposicao` contra a malha acumulada -> `costura_extremidades`
-    na malha unida -> camada com o esquema de D6.
+    bbox em EPSG:4674 (D7) ou polígono de limite (D2) -> download de cada
+    fonte (falha aborta, D8) -> recorte pelo limite ou bbox -> reprojeção
+    para `aon.pick_metric_crs` -> linhas simples 2D -> `limpa_linhas` com
+    o `rede.excluir` da fonte -> `subtrai_sobreposicao` contra a malha
+    acumulada -> `costura_extremidades` na malha unida -> camada com o
+    esquema de D6.
 
     Args:
         uf (str): Sigla da UF (2 letras).
@@ -279,15 +323,19 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None):
         bbox_crs: CRS do bbox (`QgsCoordinateReferenceSystem` ou authid);
             None = EPSG:4674.
         ids_fontes (list | None): ids das fontes a baixar; None = todas.
-        feedback: objeto opcional com `setProgress`/`pushInfo`.
+        feedback: objeto opcional com `setProgress`/`pushInfo`/`isCanceled`.
+        limite: `QgsGeometry` opcional do polígono de recorte em EPSG:4674 (D2).
+        transform_context: `QgsCoordinateTransformContext` opcional (D4).
 
     Returns:
         tuple: (QgsVectorLayer em memória, relatorio dict).
 
     Raises:
+        DownloadCancelado: se o usuário cancelou o download (D4).
         RuntimeError: GISBR ausente, nenhuma fonte, ou falha de uma fonte (a
             mensagem começa com o nome dela).
     """
+    t_inicio = time.perf_counter()
     uf = (uf or '').strip().upper()
     fontes = gisbr_bridge.fontes_rodoviarias(uf)
     if ids_fontes is not None:
@@ -298,41 +346,63 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None):
             raise RuntimeError(gisbr_bridge.missing_message())
         raise RuntimeError(f'Nenhuma fonte rodoviária do GisBR para a UF {uf!r}.')
 
+    ctx = _obter_contexto(transform_context)
     crs_4674 = QgsCoordinateReferenceSystem('EPSG:4674')
-    rect = _bbox_4674(uf, bbox, bbox_crs, crs_4674)
+    if limite is not None:
+        rect = limite.boundingBox()
+    else:
+        rect = _bbox_4674(uf, bbox, bbox_crs, crs_4674, ctx)
     bbox_tupla = (rect.xMinimum(), rect.yMinimum(), rect.xMaximum(), rect.yMaximum())
     crs_metrico, _ = pick_metric_crs(crs_4674, bbox_tupla)
     if crs_metrico is None:
         raise RuntimeError('Não foi possível determinar um CRS métrico para a malha.')
-    para_metrico = QgsCoordinateTransform(crs_4674, crs_metrico, QgsProject.instance())
+    para_metrico = QgsCoordinateTransform(crs_4674, crs_metrico, ctx)
+
+    geom_recorte = None
+    engine_recorte = None
+    if limite is not None:
+        limite_metrico = QgsGeometry(limite)
+        limite_metrico.transform(para_metrico)
+        geom_recorte = limite_metrico.buffer(TOL_LIMITE_M, 8)
+        engine_recorte = QgsGeometry.createGeometryEngine(geom_recorte.constGet())
+        engine_recorte.prepareGeometry()
 
     # 1) Baixa tudo antes de processar: falha de qualquer fonte aborta (D8).
     camadas = []
+    tempos_download = {}
     for i, fonte in enumerate(fontes):
+        _checar_cancelamento(feedback)
         nome = fonte.get('nome') or fonte.get('id')
         _progresso(feedback, 50.0 * i / len(fontes), f'Baixando {nome}')
+        t0_fonte = time.perf_counter()
         try:
             camada = gisbr_bridge.baixar_fonte(fonte, bbox_tupla, uf=uf)
         except Exception as err:
             msg = str(err)
             raise RuntimeError(
                 msg if msg.startswith(f'{nome}:') else f'{nome}: {msg}') from err
+        tempos_download[fonte.get('id')] = time.perf_counter() - t0_fonte
         camadas.append(camada)
 
     # 2) Junta na ordem de precedência (D3).
+    t0_juncao = time.perf_counter()
     malha = []
     campos_por_fonte = []
     rel_fontes = []
     for i, (fonte, camada) in enumerate(zip(fontes, camadas)):
+        _checar_cancelamento(feedback)
         nome = fonte.get('nome') or fonte.get('id')
         _progresso(feedback, 50.0 + 40.0 * i / len(fontes), f'Juntando {nome}')
         campos_por_fonte.append([(c.name(), _tipo_campo(c)) for c in camada.fields()])
         para_4674 = None
         if camada.crs() != crs_4674:
-            para_4674 = QgsCoordinateTransform(camada.crs(), crs_4674,
-                                               QgsProject.instance())
-        linhas, nulas, fora = _linhas_da_fonte(camada, fonte.get('id'), rect,
-                                               para_4674, para_metrico)
+            para_4674 = QgsCoordinateTransform(camada.crs(), crs_4674, ctx)
+        linhas, nulas, fora = _linhas_da_fonte(
+            camada, fonte.get('id'), rect,
+            para_4674, para_metrico,
+            geom_recorte=geom_recorte,
+            engine_recorte=engine_recorte,
+        )
         excluir = (fonte.get('rede') or {}).get('excluir')
         linhas, rel_limpeza = limpa_linhas(linhas, excluir=excluir)
 
@@ -363,11 +433,17 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None):
             'metros_removidos': metros, 'linhas': len(linhas),
             'vazia': not linhas,
         })
+    tempo_juncao = time.perf_counter() - t0_juncao
 
     # 3) Costura das pontas soltas na malha unida (D4).
+    _checar_cancelamento(feedback)
+    t0_costura = time.perf_counter()
     malha, rel_costura = costura_extremidades(malha, tol_m=TOL_COSTURA_M)
+    tempo_costura = time.perf_counter() - t0_costura
 
     # 4) Camada com o esquema de D6.
+    _checar_cancelamento(feedback)
+    t0_camada = time.perf_counter()
     campos = uniao_campos(campos_por_fonte)
     saida = QgsVectorLayer('LineString', f'malha_gisbr_{uf.lower()}', 'memory')
     saida.setCrs(crs_metrico)
@@ -392,10 +468,21 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None):
         feats.append(feat)
     prov.addFeatures(feats)
     saida.updateExtents()
+    tempo_camada = time.perf_counter() - t0_camada
     _progresso(feedback, 100.0, f'Malha unida: {len(feats)} trechos')
+
+    tempo_total = time.perf_counter() - t_inicio
+    tempos_s = {
+        'download': tempos_download,
+        'juncao': tempo_juncao,
+        'costura': tempo_costura,
+        'camada': tempo_camada,
+        'total': tempo_total,
+    }
 
     relatorio = {
         'uf': uf, 'bbox_4674': bbox_tupla, 'crs': crs_metrico.authid(),
         'fontes': rel_fontes, 'costura': rel_costura, 'feicoes': len(feats),
+        'tempos_s': tempos_s,
     }
     return saida, relatorio

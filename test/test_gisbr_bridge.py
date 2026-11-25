@@ -1,9 +1,21 @@
 # coding=utf-8
 """Testes unitários para o adaptador fino GisBR (gisbr_bridge.py)."""
 
+import os
+import tempfile
 import types
 import unittest
 from unittest.mock import MagicMock, patch
+
+from qgis.core import (
+    QgsCoordinateReferenceSystem,
+    QgsFeature,
+    QgsGeometry,
+    QgsPointXY,
+    QgsRectangle,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+)
 
 from desire_lines.traffic import gisbr_bridge
 
@@ -149,6 +161,17 @@ def _mock_gisbr_wfs(sources=None):
     return p, mocks["wfs"]
 
 
+def _mock_processing(run_return=None, run_side_effect=None):
+    mock_proc = types.ModuleType("processing")
+    mock_run = MagicMock()
+    if run_side_effect is not None:
+        mock_run.side_effect = run_side_effect
+    elif run_return is not None:
+        mock_run.return_value = run_return
+    mock_proc.run = mock_run
+    return patch.dict("sys.modules", {"processing": mock_proc}), mock_run
+
+
 def _mock_gisbr_recortes():
     rm_mod = types.ModuleType("gisbr.core.regioes_metropolitanas")
     div_mod = types.ModuleType("gisbr.core.divisao_regional")
@@ -170,13 +193,12 @@ def _mock_gisbr_recortes():
     mock_recorte_cls.de_agregado.return_value = mock_recorte_obj
     recorte_mod.Recorte = mock_recorte_cls
 
-    mock_layer = MagicMock()
-    mock_extent = MagicMock()
-    mock_extent.xMinimum.return_value = -44.0
-    mock_extent.yMinimum.return_value = -20.0
-    mock_extent.xMaximum.return_value = -43.0
-    mock_extent.yMaximum.return_value = -19.0
-    mock_layer.extent.return_value = mock_extent
+    mock_layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "recorte", "memory")
+    feat = QgsFeature()
+    feat.setGeometry(QgsGeometry.fromRect(QgsRectangle(-44.0, -20.0, -43.0, -19.0)))
+    mock_layer.dataProvider().addFeatures([feat])
+    mock_layer.updateExtents()
+    mock_extent = mock_layer.extent()
     recorte_mod.camada_do_recorte = MagicMock(return_value=mock_layer)
 
     modules = {
@@ -429,6 +451,191 @@ class TestGisbrBridge(unittest.TestCase):
             self.assertGreaterEqual(maxx, cx, f"maxx ({maxx}) < capital lon ({cx}) em {uf}")
             self.assertLessEqual(miny, cy, f"miny ({miny}) > capital lat ({cy}) em {uf}")
             self.assertGreaterEqual(maxy, cy, f"maxy ({maxy}) < capital lat ({cy}) em {uf}")
+
+    def test_limite_uf_sp_valido_4674(self):
+        """(a) limite_uf('SP') devolve polígono válido em EPSG:4674."""
+        layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "uf_sp", "memory")
+        feat = QgsFeature()
+        feat.setGeometry(QgsGeometry.fromRect(QgsRectangle(-53.0, -25.0, -44.0, -20.0)))
+        layer.dataProvider().addFeatures([feat])
+
+        p, mock_run = _mock_processing(run_return={"OUTPUT": layer})
+        with p:
+            geom = gisbr_bridge.limite_uf("SP")
+            mock_run.assert_called_once_with(
+                "gisbr:read_state",
+                {"CODE": "SP", "SIMPLIFIED": True, "OUTPUT": "TEMPORARY_OUTPUT"},
+            )
+            self.assertIsInstance(geom, QgsGeometry)
+            self.assertTrue(geom.isGeosValid())
+            self.assertFalse(geom.isEmpty())
+            bbox = geom.boundingBox()
+            self.assertAlmostEqual(bbox.xMinimum(), -53.0)
+            self.assertAlmostEqual(bbox.yMinimum(), -25.0)
+            self.assertAlmostEqual(bbox.xMaximum(), -44.0)
+            self.assertAlmostEqual(bbox.yMaximum(), -20.0)
+
+    def test_limite_uf_duas_feicoes_viram_uma_geometria(self):
+        """(b) duas feições viram uma geometria unida."""
+        layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "uf_sp", "memory")
+        feat1 = QgsFeature()
+        feat1.setGeometry(QgsGeometry.fromRect(QgsRectangle(-50.0, -24.0, -48.0, -22.0)))
+        feat2 = QgsFeature()
+        feat2.setGeometry(QgsGeometry.fromRect(QgsRectangle(-48.0, -24.0, -46.0, -22.0)))
+        layer.dataProvider().addFeatures([feat1, feat2])
+
+        p, _ = _mock_processing(run_return={"OUTPUT": layer})
+        with p:
+            geom = gisbr_bridge.limite_uf("SP")
+            self.assertIsInstance(geom, QgsGeometry)
+            self.assertTrue(geom.isGeosValid())
+            bbox = geom.boundingBox()
+            self.assertAlmostEqual(bbox.xMinimum(), -50.0)
+            self.assertAlmostEqual(bbox.yMinimum(), -24.0)
+            self.assertAlmostEqual(bbox.xMaximum(), -46.0)
+            self.assertAlmostEqual(bbox.yMaximum(), -22.0)
+
+    def test_limite_uf_erros_com_sp_na_mensagem(self):
+        """(c) None, camada vazia e exceção levantam RuntimeError com 'SP' na mensagem."""
+        # 1. Retorno None
+        p_none, _ = _mock_processing(run_return=None)
+        with p_none:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_uf("SP")
+            self.assertIn("SP", str(ctx.exception))
+
+        # 2. OUTPUT None
+        p_out_none, _ = _mock_processing(run_return={"OUTPUT": None})
+        with p_out_none:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_uf("SP")
+            self.assertIn("SP", str(ctx.exception))
+
+        # 3. Camada vazia
+        empty_layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "empty", "memory")
+        p_empty, _ = _mock_processing(run_return={"OUTPUT": empty_layer})
+        with p_empty:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_uf("SP")
+            self.assertIn("SP", str(ctx.exception))
+
+        # 4. Exceção levantada pelo processing.run
+        p_exc, _ = _mock_processing(run_side_effect=RuntimeError("Falha de conexão"))
+        with p_exc:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_uf("SP")
+            self.assertIn("SP", str(ctx.exception))
+
+    def test_limite_uf_caminho_arquivo(self):
+        """limite_uf aceita caminho em disco retornado pelo Processing."""
+        with tempfile.NamedTemporaryFile(suffix=".gpkg", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            mem_layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "sp", "memory")
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromRect(QgsRectangle(-47.0, -24.0, -46.0, -23.0)))
+            mem_layer.dataProvider().addFeatures([feat])
+            QgsVectorFileWriter.writeAsVectorFormatV3(
+                mem_layer,
+                tmp_path,
+                mem_layer.transformContext(),
+                QgsVectorFileWriter.SaveVectorOptions(),
+            )
+
+            p, _ = _mock_processing(run_return={"OUTPUT": tmp_path})
+            with p:
+                geom = gisbr_bridge.limite_uf("SP")
+                self.assertIsInstance(geom, QgsGeometry)
+                self.assertTrue(geom.isGeosValid())
+                bbox = geom.boundingBox()
+                self.assertAlmostEqual(bbox.xMinimum(), -47.0)
+                self.assertAlmostEqual(bbox.xMaximum(), -46.0)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_limite_uf_reprojecao_crs_diferente(self):
+        """limite_uf transforma geometria para EPSG:4674 quando o CRS da camada diferir."""
+        # EPSG:31983 (SIRGAS 2000 / UTM zone 23S)
+        layer = QgsVectorLayer("Polygon?crs=EPSG:31983", "sp_utm", "memory")
+        feat = QgsFeature()
+        feat.setGeometry(QgsGeometry.fromRect(QgsRectangle(500000, 7400000, 510000, 7410000)))
+        layer.dataProvider().addFeatures([feat])
+
+        p, _ = _mock_processing(run_return={"OUTPUT": layer})
+        with p:
+            geom = gisbr_bridge.limite_uf("SP")
+            self.assertTrue(geom.isGeosValid())
+            bbox = geom.boundingBox()
+            self.assertLess(bbox.xMinimum(), 0.0)
+            self.assertGreater(bbox.xMinimum(), -60.0)
+            self.assertLess(bbox.yMinimum(), 0.0)
+            self.assertGreater(bbox.yMinimum(), -40.0)
+
+    def test_limite_recorte_sucesso(self):
+        """limite_recorte devolve QgsGeometry unida em EPSG:4674 a partir de camada_do_recorte."""
+        p, mocks = _mock_gisbr_recortes()
+        with p:
+            geom = gisbr_bridge.limite_recorte("rm", "04501")
+            self.assertIsInstance(geom, QgsGeometry)
+            self.assertTrue(geom.isGeosValid())
+            bbox = geom.boundingBox()
+            self.assertAlmostEqual(bbox.xMinimum(), -44.0)
+            self.assertAlmostEqual(bbox.yMinimum(), -20.0)
+            self.assertAlmostEqual(bbox.xMaximum(), -43.0)
+            self.assertAlmostEqual(bbox.yMaximum(), -19.0)
+
+    def test_limite_recorte_duas_feicoes(self):
+        """limite_recorte une múltiplas feições retornadas por camada_do_recorte."""
+        p, mocks = _mock_gisbr_recortes()
+        layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "duas", "memory")
+        feat1 = QgsFeature()
+        feat1.setGeometry(QgsGeometry.fromRect(QgsRectangle(-45.0, -20.0, -44.0, -19.0)))
+        feat2 = QgsFeature()
+        feat2.setGeometry(QgsGeometry.fromRect(QgsRectangle(-44.0, -20.0, -43.0, -19.0)))
+        layer.dataProvider().addFeatures([feat1, feat2])
+        mocks["recorte"].camada_do_recorte.return_value = layer
+
+        with p:
+            geom = gisbr_bridge.limite_recorte("micro", "31001")
+            self.assertIsInstance(geom, QgsGeometry)
+            self.assertTrue(geom.isGeosValid())
+            bbox = geom.boundingBox()
+            self.assertAlmostEqual(bbox.xMinimum(), -45.0)
+            self.assertAlmostEqual(bbox.xMaximum(), -43.0)
+
+    def test_limite_recorte_erros(self):
+        """limite_recorte levanta RuntimeError com tipo e id quando None, vazia ou exceção."""
+        p, mocks = _mock_gisbr_recortes()
+
+        # 1. camada_do_recorte devolve None
+        mocks["recorte"].camada_do_recorte.return_value = None
+        with p:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_recorte("rm", "04501")
+            msg = str(ctx.exception)
+            self.assertIn("rm", msg)
+            self.assertIn("04501", msg)
+
+        # 2. camada_do_recorte devolve camada vazia
+        empty_layer = QgsVectorLayer("Polygon?crs=EPSG:4674", "empty", "memory")
+        mocks["recorte"].camada_do_recorte.return_value = empty_layer
+        with p:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_recorte("rm", "04501")
+            msg = str(ctx.exception)
+            self.assertIn("rm", msg)
+            self.assertIn("04501", msg)
+
+        # 3. camada_do_recorte levanta exceção
+        mocks["recorte"].camada_do_recorte.side_effect = RuntimeError("Falha interna")
+        with p:
+            with self.assertRaises(RuntimeError) as ctx:
+                gisbr_bridge.limite_recorte("rm", "04501")
+            msg = str(ctx.exception)
+            self.assertIn("rm", msg)
+            self.assertIn("04501", msg)
 
 
 if __name__ == "__main__":

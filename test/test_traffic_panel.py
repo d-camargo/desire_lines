@@ -355,19 +355,20 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.dialog._update_traffic_tab_state()
             self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
 
-    @patch('desire_lines.traffic_panel.gisbr_bridge.extensao_recorte',
+    @patch('desire_lines.traffic_panel.gisbr_bridge.limite_recorte',
            side_effect=RuntimeError('Falha ao obter recorte'))
     @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
-    def test_gisbr_bbox_runtime_error_pushes_critical_message(
-            self, mock_fontes, mock_extensao):
-        """RuntimeError in extensao_recorte during the download produces a critical message (D7)."""
+    def test_limite_recorte_error_pushes_critical_message(
+            self, mock_fontes, mock_limite):
+        """RuntimeError in limite_recorte during the download produces a critical message, no task (D2)."""
         mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
         mock_iface = MagicMock()
         with patch('desire_lines.traffic.gisbr_bridge.is_available',
                    return_value=True), \
              patch('desire_lines.traffic_panel.iface', mock_iface), \
              patch('desire_lines.ui_common.iface', mock_iface), \
-             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha') as mock_baixar:
+             patch('desire_lines.traffic_panel.QgsApplication') as mock_app, \
+             patch('desire_lines.traffic.malha_gisbr.baixar_malha') as mock_baixar:
             self.dialog.taNetFromGisbr.setChecked(True)
             self.dialog.taUf.setText('MG')
             self.dialog.taRecorteTipo.setCurrentIndex(self.dialog.taRecorteTipo.findData('rm'))
@@ -376,6 +377,8 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
 
             self.dialog.run_download()
             mock_baixar.assert_not_called()
+            mock_app.taskManager.return_value.addTask.assert_not_called()
+            self.assertIsNone(self.dialog._download_task)
             self.assertEqual(self.dialog.last_message[0], 'critical')
             self.assertIn('Falha ao obter recorte', self.dialog.last_message[1])
 
@@ -433,64 +436,214 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.dialog.taSources.item(0).setCheckState(Qt.CheckState.Checked)
             self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
 
-    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
-    def test_run_download_selects_layer_and_marks_from_layer(self, mock_fontes):
-        """run_download with baixar_malha mocked selects the layer in taNetworkCombo and marks taNetFromLayer (D1, D9)."""
-        from qgis.core import QgsProject
-        mock_fontes.return_value = [
-            {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
-            {'id': 'der_mg_rodovias', 'nome': 'DER-MG'},
-        ]
-        layer = self._line_layer('EPSG:31983', self.GEO_LINES)
-        QgsProject.instance().addMapLayers([layer])
-        self.addCleanup(lambda: QgsProject.instance().removeMapLayers([layer.id()]))
-        self.dialog._write_layer_to_gpkg = MagicMock(return_value=layer)
-
+    def _run_download_to_task(self, mock_fontes, sources=None):
+        """Call run_download with addTask mocked; return the task and the mock app (D1)."""
+        mock_fontes.return_value = sources or [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
         mock_iface = MagicMock()
         with patch('desire_lines.traffic_panel.iface', mock_iface), \
              patch('desire_lines.ui_common.iface', mock_iface), \
              patch('desire_lines.traffic.gisbr_bridge.is_available',
                    return_value=True), \
-             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha',
-                   return_value=(layer, dict(self.RELATORIO))) as mock_baixar:
+             patch('desire_lines.traffic_panel.QgsApplication') as mock_app:
             self.dialog.taNetFromGisbr.setChecked(True)
             self.dialog.taUf.setText('MG')
             self.dialog.run_download()
+            button_enabled = self.dialog.taDownloadNetwork.isEnabled()
+        add_task = mock_app.taskManager.return_value.addTask
+        add_task.assert_called_once()
+        return add_task.call_args[0][0], button_enabled
 
+    def _finish_task(self, task, baixar_kwargs):
+        """Run the task inline (no task manager) and emit finished, with iface mocked (D1)."""
+        from qgis.core import QgsProject, QgsVectorLayer
+        loaded = []
+
+        def _add_vector_layer(uri, name, provider):
+            lyr = QgsVectorLayer(uri, name, provider)
+            QgsProject.instance().addMapLayers([lyr])
+            self.addCleanup(
+                lambda: QgsProject.instance().removeMapLayers([lyr.id()]))
+            loaded.append(lyr)
+            return lyr
+
+        mock_iface = MagicMock()
+        mock_iface.addVectorLayer.side_effect = _add_vector_layer
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface), \
+             patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True), \
+             patch('desire_lines.traffic.malha_gisbr.baixar_malha',
+                   **baixar_kwargs) as mock_baixar:
+            ok = task.run()
+            task.finished(ok)
+            button_enabled = self.dialog.taDownloadNetwork.isEnabled()
+        return ok, mock_baixar, loaded, button_enabled
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_run_download_selects_layer_and_marks_from_layer(self, mock_fontes):
+        """run_download -> task.run -> concluida loads the GPKG table, selects it and marks taNetFromLayer (D1)."""
+        import os
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        out_path = os.path.join(tmp.name, 'out.gpkg')
+        self.dialog.taOutputFile.setFilePath(out_path)
+        layer = self._line_layer('EPSG:31983', self.GEO_LINES)
+
+        task, _enabled = self._run_download_to_task(mock_fontes, [
+            {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
+            {'id': 'der_mg_rodovias', 'nome': 'DER-MG'},
+        ])
+        self.assertIs(self.dialog._download_task, task)
+        ok, mock_baixar, loaded, button_enabled = self._finish_task(
+            task, {'return_value': (layer, dict(self.RELATORIO))})
+
+        self.assertTrue(ok)
         mock_baixar.assert_called_once()
         self.assertEqual(mock_baixar.call_args[0][0], 'MG')
         self.assertEqual(mock_baixar.call_args[1]['ids_fontes'],
                          ['dnit_snv', 'der_mg_rodovias'])
         self.assertIsNone(mock_baixar.call_args[1]['bbox'])
-        self.dialog._write_layer_to_gpkg.assert_called_once_with(
-            layer, 'malha_gisbr_mg')
-        self.assertIs(self.dialog.taNetworkCombo.currentLayer(), layer)
+        self.assertIsNone(mock_baixar.call_args[1]['limite'])
+        self.assertEqual(task.uri, out_path + '|layername=malha_gisbr_mg')
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0].featureCount(), 2)
+        self.assertIs(self.dialog.taNetworkCombo.currentLayer(), loaded[0])
         self.assertTrue(self.dialog.taNetFromLayer.isChecked())
         self.assertFalse(self.dialog.taNetFromGisbr.isChecked())
+        self.assertIsNone(self.dialog._download_task)
         self.assertEqual(self.dialog.last_message[0], 'success')
 
     @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
     def test_run_download_error_is_critical(self, mock_fontes):
-        """A baixar_malha failure becomes a critical message with the error text (D8, D9)."""
+        """A baixar_malha failure in the task becomes a critical message with the error text (D1, D8)."""
+        task, _enabled = self._run_download_to_task(mock_fontes)
+        ok, _mock, loaded, button_enabled = self._finish_task(
+            task, {'side_effect': RuntimeError('Malha DNIT: falhou')})
+        self.assertFalse(ok)
+        self.assertEqual(loaded, [])
+        self.assertIsNone(self.dialog._download_task)
+        self.assertTrue(button_enabled)
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('Malha DNIT: falhou', self.dialog.last_message[1])
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.limite_uf')
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_run_download_runs_in_background(self, mock_fontes, mock_limite):
+        """run_download hands a task to the task manager, never calls baixar_malha itself and disables the button (D1, D2)."""
+        from qgis.core import QgsGeometry
+        poligono = QgsGeometry.fromWkt('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))')
+        mock_limite.return_value = poligono
+        self.dialog.taRecorteTipo.setCurrentIndex(
+            self.dialog.taRecorteTipo.findData('uf'))
+        with patch('desire_lines.traffic.malha_gisbr.baixar_malha') as mock_baixar:
+            task, button_enabled = self._run_download_to_task(mock_fontes)
+        mock_baixar.assert_not_called()
+        mock_limite.assert_called_once_with('MG')
+        self.assertIs(self.dialog._download_task, task)
+        self.assertIs(task.limite, poligono)
+        self.assertEqual(task.tabela, 'malha_gisbr_mg')
+        self.assertEqual(task.ids_fontes, ['dnit_snv'])
+        self.assertFalse(button_enabled)
+        self.assertEqual(self.dialog.last_message[0], 'info')
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.limite_uf',
+           side_effect=RuntimeError('SP: limite indisponível'))
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_run_download_boundary_failure_is_critical(self, mock_fontes, _mock_limite):
+        """A failure resolving the boundary is critical and no task is created (D1, D2)."""
         mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
+        self.dialog.taRecorteTipo.setCurrentIndex(
+            self.dialog.taRecorteTipo.findData('uf'))
         mock_iface = MagicMock()
         with patch('desire_lines.traffic_panel.iface', mock_iface), \
              patch('desire_lines.ui_common.iface', mock_iface), \
              patch('desire_lines.traffic.gisbr_bridge.is_available',
                    return_value=True), \
-             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha',
-                   side_effect=RuntimeError('Malha DNIT: falhou')):
+             patch('desire_lines.traffic_panel.QgsApplication') as mock_app:
+            self.dialog.taNetFromGisbr.setChecked(True)
+            self.dialog.taUf.setText('SP')
+            self.dialog.run_download()
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
+        mock_app.taskManager.return_value.addTask.assert_not_called()
+        self.assertIsNone(self.dialog._download_task)
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('SP: limite indisponível', self.dialog.last_message[1])
+
+    def _done_task(self, **kwargs):
+        from types import SimpleNamespace
+        fields = {'cancelado': False, 'erro': None, 'uri': None,
+                  'tabela': 'malha_gisbr_mg', 'relatorio': None}
+        fields.update(kwargs)
+        return SimpleNamespace(**fields)
+
+    def test_on_download_concluido_success_selects_layer(self):
+        """A successful task loads its URI, selects it in taNetworkCombo and marks taNetFromLayer (D1)."""
+        from qgis.core import QgsProject
+        layer = self._line_layer('EPSG:31983', self.GEO_LINES)
+        QgsProject.instance().addMapLayers([layer])
+        self.addCleanup(lambda: QgsProject.instance().removeMapLayers([layer.id()]))
+        self.dialog._download_task = object()
+        mock_iface = MagicMock()
+        mock_iface.addVectorLayer.return_value = layer
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog._on_download_concluido(self._done_task(
+                uri='/tmp/out.gpkg|layername=malha_gisbr_mg',
+                relatorio=dict(self.RELATORIO)))
+        mock_iface.addVectorLayer.assert_called_once_with(
+            '/tmp/out.gpkg|layername=malha_gisbr_mg', 'malha_gisbr_mg', 'ogr')
+        self.assertIsNone(self.dialog._download_task)
+        self.assertIs(self.dialog.taNetworkCombo.currentLayer(), layer)
+        self.assertTrue(self.dialog.taNetFromLayer.isChecked())
+        self.assertEqual(self.dialog.last_message[0], 'success')
+
+    def test_on_download_concluido_error_is_critical(self):
+        """A failed task is a critical message with its error text, nothing loaded (D1)."""
+        self.dialog._download_task = object()
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog._on_download_concluido(
+                self._done_task(erro='Malha DNIT: timeout'))
+        mock_iface.addVectorLayer.assert_not_called()
+        self.assertIsNone(self.dialog._download_task)
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('Malha DNIT: timeout', self.dialog.last_message[1])
+
+    def test_on_download_concluido_cancelled_is_info(self):
+        """A cancelled task is an info message and publishes nothing (D1)."""
+        from qgis.core import QgsProject
+        before = len(QgsProject.instance().mapLayers())
+        self.dialog._download_task = object()
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog._on_download_concluido(self._done_task(cancelado=True))
+        mock_iface.addVectorLayer.assert_not_called()
+        self.assertEqual(len(QgsProject.instance().mapLayers()), before)
+        self.assertIsNone(self.dialog._download_task)
+        self.assertEqual(self.dialog.last_message[0], 'info')
+
+    @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
+    def test_download_button_disabled_while_task_runs(self, mock_fontes):
+        """_update_traffic_tab_state keeps the button disabled while _download_task exists (D1)."""
+        mock_fontes.return_value = [{'id': 'dnit_snv', 'nome': 'Malha DNIT'}]
+        with patch('desire_lines.traffic.gisbr_bridge.is_available',
+                   return_value=True):
             self.dialog.taNetFromGisbr.setChecked(True)
             self.dialog.taUf.setText('MG')
-            self.dialog.run_download()
-        self.assertEqual(self.dialog.last_message[0], 'critical')
-        self.assertIn('Malha DNIT: falhou', self.dialog.last_message[1])
+            self.dialog._update_traffic_tab_state()
+            self.assertTrue(self.dialog.taDownloadNetwork.isEnabled())
+            self.dialog._download_task = object()
+            self.dialog._update_traffic_tab_state()
+            self.assertFalse(self.dialog.taDownloadNetwork.isEnabled())
 
     def test_run_capacity_does_not_call_gisbr_with_radio_marked(self):
         """With the GISBR radio marked, run_capacity still works on the layer only (D1)."""
         mock_iface = MagicMock()
         with patch('desire_lines.traffic_panel.gisbr_bridge.fetch_road_network') as mock_fetch, \
-             patch('desire_lines.traffic_panel.malha_gisbr.baixar_malha') as mock_baixar, \
+             patch('desire_lines.traffic.malha_gisbr.baixar_malha') as mock_baixar, \
              patch('desire_lines.traffic.gisbr_bridge.is_available',
                    return_value=True), \
              patch('desire_lines.traffic_panel.iface', mock_iface), \
@@ -852,6 +1005,58 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         reported_arcs = int(match.group(1))
 
         self.assertEqual(reported_arcs, published_layer.featureCount())
+
+    @patch('desire_lines.traffic_panel.QgsMessageLog.logMessage')
+    def test_report_download_separates_removed_trimmed_stitched(self, mock_log):
+        """Synthetic report with removidas_inteiras=5, aparadas=3, costuradas=7 separates counts and logs stitching and times (D5)."""
+        relatorio = {
+            'feicoes': 100,
+            'fontes': [
+                {'id': 'dnit_snv', 'nome': 'Malha DNIT', 'removidas_inteiras': 5,
+                 'aparadas': 3, 'linhas': 10, 'baixadas': 18,
+                 'fora_do_recorte': 0, 'metros_removidos': 120.0},
+            ],
+            'costura': {'no_no': 4, 't': 3, 'costuradas': 7},
+            'tempos_s': {
+                'download': {'dnit_snv': 1.5},
+                'juncao': 0.8,
+                'costura': 0.4,
+                'camada': 0.2,
+                'total': 2.9,
+            },
+        }
+        self.dialog._report_download(relatorio, 'malha_gisbr_sp')
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        self.assertIn('5 removed as duplicates, 3 trimmed, 7 stitched',
+                      self.dialog.last_message[1])
+
+        # Message Log: per-source line, stitching line, and phase times line (D5)
+        logged = [call[0][0] for call in mock_log.call_args_list]
+        self.assertEqual(len(logged), 3)
+        self.assertIn('Malha DNIT: 10 segment(s) kept', logged[0])
+        self.assertIn('4 node-to-node', logged[1])
+        self.assertIn('3 T', logged[1])
+        self.assertIn('Phase times', logged[2])
+        self.assertIn('dnit_snv: 1.5s', logged[2])
+        self.assertIn('merge 0.8s', logged[2])
+        self.assertIn('stitch 0.4s', logged[2])
+        self.assertIn('layer 0.2s', logged[2])
+        self.assertIn('total 2.9s', logged[2])
+
+    def test_report_download_sums_counts_across_sources(self):
+        """removidas_inteiras and aparadas are summed across all sources in the message bar (D5)."""
+        relatorio = {
+            'feicoes': 200,
+            'fontes': [
+                {'id': 'dnit', 'nome': 'DNIT', 'removidas_inteiras': 2, 'aparadas': 1},
+                {'id': 'der', 'nome': 'DER', 'removidas_inteiras': 3, 'aparadas': 2},
+            ],
+            'costura': {'no_no': 2, 't': 5, 'costuradas': 7},
+        }
+        self.dialog._report_download(relatorio, 'malha_gisbr_mg')
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        self.assertIn('5 removed as duplicates, 3 trimmed, 7 stitched',
+                      self.dialog.last_message[1])
 
 
 if __name__ == "__main__":

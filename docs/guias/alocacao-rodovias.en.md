@@ -80,6 +80,19 @@ checked source fails (for instance, due to server unavailability), the process
 **aborts immediately** with an error message naming the failed source, avoiding
 incomplete network layers.
 
+The download runs in the **background**: progress and cancellation are handled
+by the **QGIS task manager** (bottom corner), and QGIS remains usable
+throughout the process.
+
+Regarding network clipping:
+
+- In **Whole state** mode and regional extents (*Metropolitan area*,
+  *Micro-region*, *Meso-region*, and *Health macro-region*), the network is
+  clipped by the **official boundary** (IBGE, via GisBR), with a 500 m buffer
+  at the border.
+- In **Centroid extent (+ radius)** mode, clipping follows the bounding box of
+  the centroids plus the maximum distance (*Max connector (m)*).
+
 When more than one source is checked, the plugin performs a **geometric merge
 with precedence**:
 
@@ -104,7 +117,9 @@ Each feature in the resulting network receives the traceability attributes
 fields are unified. The final network is saved in the output GeoPackage as the
 **`malha_gisbr_<uf>`** layer (for example, `malha_gisbr_mg`), loaded directly into
 the QGIS project and automatically selected in *Use an existing layer*, ready
-for capacity calculation and assignment.
+for capacity calculation and assignment. The final message in the message bar
+separates segments **removed as duplicates**, **trimmed**, and **stitched**
+(with a per-source report in the Message Log).
 
 When the *Use an existing layer* option is used, the study area is also
 clipped to the extent of the centroids (with a connector buffer), limiting the

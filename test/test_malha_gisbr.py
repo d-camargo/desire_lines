@@ -5,6 +5,7 @@ Geometrias sintéticas em metros: a "BR" de referência vai de (0, 0) a
 (10000, 0); as "estaduais" são as geometrias novas.
 """
 
+import inspect
 import unittest
 from unittest.mock import MagicMock, patch
 from test.utilities import get_qgis_app
@@ -12,11 +13,12 @@ from test.utilities import get_qgis_app
 QGIS_APP = get_qgis_app()
 
 from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
-                       QgsFeature, QgsGeometry, QgsPointXY, QgsProject,
-                       QgsVectorLayer)
+                       QgsCoordinateTransformContext, QgsFeature, QgsGeometry,
+                       QgsPointXY, QgsProject, QgsVectorLayer)
 
 from desire_lines.traffic import gisbr_bridge
-from desire_lines.traffic.malha_gisbr import baixar_malha, subtrai_sobreposicao
+from desire_lines.traffic.malha_gisbr import (DownloadCancelado, TOL_LIMITE_M,
+                                            baixar_malha, subtrai_sobreposicao)
 from desire_lines.traffic.network import build_network
 from desire_lines.traffic.outputs import _create_field
 
@@ -253,6 +255,102 @@ class TestBaixarMalha(unittest.TestCase):
         self.assertIs(res, camada)
         mock_malha.assert_called_once_with('MG', bbox=(0, 0, 1, 1),
                                            bbox_crs='EPSG:4674')
+
+    def test_recorte_poligono_em_l(self):
+        # Polígono em L cobrindo [0, 10000] x [0, 2000] e [0, 4000] x [2000, 6000]
+        pts = [(0, 0), (10000, 0), (10000, 2000), (4000, 2000), (4000, 6000),
+               (0, 6000), (0, 0)]
+        poly_utm = QgsGeometry.fromPolygonXY([[QgsPointXY(E0 + x, N0 + y) for x, y in pts]])
+        para_4674 = QgsCoordinateTransform(UTM, SIRGAS, QgsProject.instance())
+        limite_4674 = QgsGeometry(poly_utm)
+        limite_4674.transform(para_4674)
+
+        # 3 feições sintéticas:
+        # (a) dentro do bbox de L mas fora de L (> 500m de folga): (6000, 4000) -> (8000, 4000)
+        # (b) cruza a divisa: (6000, 1000) -> (6000, 4000)
+        # (c) corre a 200 m por fora da divisa: (5000, 2200) -> (8000, 2200)
+        camada = _camada_4674(
+            [('codigo', 'string'), ('ds_superfi', 'string')],
+            [
+                ([(6000, 4000), (8000, 4000)], ['LINHA-A', 'PAV']),
+                ([(6000, 1000), (6000, 4000)], ['LINHA-B', 'PAV']),
+                ([(5000, 2200), (8000, 2200)], ['LINHA-C', 'PAV']),
+            ],
+            'teste_l'
+        )
+
+        with patch.object(gisbr_bridge, 'fontes_rodoviarias',
+                          return_value=[FONTE_DNIT]), \
+                patch.object(gisbr_bridge, 'baixar_fonte',
+                             return_value=camada) as mock_baixar:
+            res_layer, rel = baixar_malha('MG', limite=limite_4674)
+
+        # O bbox pedido ao servidor foi o boundingBox() de limite
+        bbox_pedido = mock_baixar.call_args[0][1]
+        rect_limite = limite_4674.boundingBox()
+        self.assertAlmostEqual(bbox_pedido[0], rect_limite.xMinimum())
+        self.assertAlmostEqual(bbox_pedido[1], rect_limite.yMinimum())
+        self.assertAlmostEqual(bbox_pedido[2], rect_limite.xMaximum())
+        self.assertAlmostEqual(bbox_pedido[3], rect_limite.yMaximum())
+
+        feats = {f['codigo']: f for f in res_layer.getFeatures()}
+
+        # (a) linha dentro do bbox mas fora do "L" -> sai e conta em fora_do_recorte
+        self.assertNotIn('LINHA-A', feats)
+        self.assertEqual(rel['fontes'][0]['fora_do_recorte'], 1)
+
+        # (b) linha que cruza a divisa -> cortada a <= 500 m (+ tolerância numérica) do limite
+        self.assertIn('LINHA-B', feats)
+        geom_b = feats['LINHA-B'].geometry()
+        # Original tinha 3000 m; cortada em y = N0 + 2500 m, sobra 1500 m
+        self.assertAlmostEqual(geom_b.length(), 1500.0, delta=1.0)
+        # Todos os pontos da linha cortada estão a <= 500 m do polígono do limite
+        for pt in geom_b.asPolyline():
+            dist = QgsGeometry.fromPointXY(pt).distance(poly_utm)
+            self.assertLessEqual(dist, TOL_LIMITE_M + 1e-2)
+
+        # (c) linha que corre a 200 m por fora da divisa -> fica (folga)
+        self.assertIn('LINHA-C', feats)
+        geom_c = feats['LINHA-C'].geometry()
+        self.assertAlmostEqual(geom_c.length(), 3000.0, delta=1.0)
+        self.assertAlmostEqual(geom_c.distance(poly_utm), 200.0, delta=1.0)
+
+    def test_limite_none_comportamento_antigo(self):
+        # (d) limite=None -> comportamento antigo
+        camada, rel, _ = self._baixar([_dnit(), _der()], limite=None)
+        self.assertTrue(camada.isValid())
+        self.assertEqual(len(rel['fontes']), 2)
+
+    def test_cancelamento_na_segunda_fonte(self):
+        # (e) feedback com isCanceled() -> True na 2ª fonte levanta DownloadCancelado
+        feedback = MagicMock()
+        feedback.isCanceled.side_effect = [False, True]
+        with self.assertRaises(DownloadCancelado):
+            self._baixar([_dnit(), _der()], feedback=feedback)
+
+    def test_tempos_s_tem_as_fases(self):
+        # (f) tempos_s tem as fases
+        _, rel, _ = self._baixar([_dnit(), _der()])
+        self.assertIn('tempos_s', rel)
+        tempos = rel['tempos_s']
+        for fase in ('download', 'juncao', 'costura', 'camada', 'total'):
+            self.assertIn(fase, tempos)
+        self.assertIn('dnit_snv', tempos['download'])
+        self.assertIn('der_mg_rodovias', tempos['download'])
+        self.assertGreaterEqual(tempos['total'], 0.0)
+
+    def test_sem_qgs_project_no_corpo_de_baixar_malha_e_linhas(self):
+        # (g) texto garante que QgsProject.instance() não aparece no corpo
+        import desire_lines.traffic.malha_gisbr as m_mod
+        src_baixar = inspect.getsource(m_mod.baixar_malha)
+        src_linhas = inspect.getsource(m_mod._linhas_da_fonte)
+        self.assertNotIn('QgsProject.instance()', src_baixar)
+        self.assertNotIn('QgsProject.instance()', src_linhas)
+
+    def test_transform_context_passado_explicitamente(self):
+        ctx = QgsCoordinateTransformContext()
+        camada, rel, _ = self._baixar([_dnit(), _der()], transform_context=ctx)
+        self.assertTrue(camada.isValid())
 
 
 if __name__ == '__main__':

@@ -421,234 +421,264 @@
 <context>
     <name>TrafficAssignmentPanel</name>
     <message>
-        <location filename="../traffic_panel.py" line="124"/>
+        <location filename="../traffic_panel.py" line="128"/>
         <source>no</source>
         <translation>não</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="124"/>
+        <location filename="../traffic_panel.py" line="128"/>
         <source>yes</source>
         <translation>sim</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="141"/>
+        <location filename="../traffic_panel.py" line="145"/>
         <source>field:</source>
         <translation>campo:</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="394"/>
+        <location filename="../traffic_panel.py" line="399"/>
         <source>Could not fetch the highway network from GisBR: {}</source>
         <translation>Falha ao obter a malha rodoviária do GisBR: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="497"/>
+        <location filename="../traffic_panel.py" line="502"/>
         <source>Could not clip the network to the study area ({}); using the full mesh.</source>
         <translation>Não foi possível recortar a malha pela área de estudo ({}); usando a malha completa.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="513"/>
+        <location filename="../traffic_panel.py" line="518"/>
         <source>The highway network is empty after clipping.</source>
         <translation>A malha rodoviária ficou vazia após o recorte.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="524"/>
+        <location filename="../traffic_panel.py" line="529"/>
         <source>{} of {} arcs dropped for null or invalid capacity.</source>
         <translation>{} de {} arcos descartados por capacidade nula ou inválida.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="529"/>
+        <location filename="../traffic_panel.py" line="534"/>
         <source>No arc has a valid capacity; check the HCM parameters.</source>
         <translation>Nenhum arco tem capacidade válida; revise os parâmetros HCM.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="547"/>
+        <location filename="../traffic_panel.py" line="552"/>
         <source>No centroid could be connected to the highway network (nearest node farther than {:.0f} m).</source>
         <translation>Nenhum centróide pôde ser conectado à malha rodoviária (nó mais próximo além de {:.0f} m).</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="658"/>
+        <location filename="../traffic_panel.py" line="663"/>
         <source>parameters: {} official, {} default, {} set by the user</source>
         <translation>parâmetros: {} de dado oficial, {} do padrão, {} definidos pelo usuário</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="663"/>
+        <location filename="../traffic_panel.py" line="668"/>
         <source>{} urban arc(s): HCM highway capacity does not apply to urban crossings — read those with care</source>
         <translation>{} arco(s) urbano(s): a capacidade HCM rodoviária não se aplica a travessias urbanas — leia esses trechos com ressalva</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="754"/>
+        <location filename="../traffic_panel.py" line="821"/>
         <source>Computing HCM capacity…</source>
         <translation>Calculando capacidade HCM…</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="773"/>
+        <location filename="../traffic_panel.py" line="840"/>
         <source>Capacity computed for {} directed arcs — {}</source>
         <translation>Capacidade calculada para {} arcos direcionados — {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="795"/>
+        <location filename="../traffic_panel.py" line="862"/>
         <source>The centroids layer has no usable geometry.</source>
         <translation>A camada de centróides não tem geometria utilizável.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="805"/>
+        <location filename="../traffic_panel.py" line="872"/>
         <source>Assigning traffic ({})…</source>
         <translation>Alocando tráfego ({})…</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="831"/>
+        <location filename="../traffic_panel.py" line="898"/>
         <source>No OD pair matches the connected centroids. Check that Origin, Destination and Traffic id use the same id scheme.</source>
         <translation>Nenhum par OD corresponde aos centróides conectados. Verifique se Origem, Destino e Id de tráfego usam o mesmo esquema de identificação.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="844"/>
+        <location filename="../traffic_panel.py" line="911"/>
         <source>Traffic assignment failed: {}</source>
         <translation>Falha ao executar a alocação de tráfego: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="854"/>
+        <location filename="../traffic_panel.py" line="921"/>
         <source>gap: n/a — AoN does not feed capacity back into cost, so v/c above 1 diagnoses overload, not equilibrium</source>
         <translation>gap: n/a — o AoN não realimenta a capacidade no custo, então v/c acima de 1 é diagnóstico de sobrecarga, não equilíbrio</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="858"/>
+        <location filename="../traffic_panel.py" line="925"/>
         <source>final gap: {:.4f} in {} iteration(s)</source>
         <translation>gap final: {:.4f} em {} iteração(ões)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="861"/>
+        <location filename="../traffic_panel.py" line="928"/>
         <source>{} matrix rows had unknown ids</source>
         <translation>{} linha(s) da matriz com ids desconhecidos</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="863"/>
+        <location filename="../traffic_panel.py" line="930"/>
         <source>{} pairs unreachable (disconnected network)</source>
         <translation>{} pares inalcançáveis (rede desconexa)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="869"/>
+        <location filename="../traffic_panel.py" line="936"/>
         <source>{} done: {} pairs allocated over {} arcs — {}</source>
         <translation>{} concluído: {} pares alocados sobre {} arcos — {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Centroid extent (+ radius)</source>
         <translation>Extensão dos centroides (+ raio)</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Whole state</source>
         <translation>UF inteira</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Metropolitan area</source>
         <translation>Região Metropolitana</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Micro-region</source>
         <translation>Microrregião</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Meso-region</source>
         <translation>Mesorregião</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="66"/>
+        <location filename="../traffic_panel.py" line="70"/>
         <source>Health macro-region</source>
         <translation>Macrorregião de saúde</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="692"/>
+        <location filename="../traffic_panel.py" line="695"/>
         <source>Could not obtain region extent: {}</source>
         <translation>Não foi possível obter a extensão da região: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="458"/>
+        <location filename="../traffic_panel.py" line="463"/>
         <source>Could not reproject the highway network to a metric CRS: {}</source>
         <translation>Falha ao reprojetar a malha rodoviária para um CRS métrico: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="463"/>
+        <location filename="../traffic_panel.py" line="468"/>
         <source>Highway network reprojected from {} to {} for metric computations.</source>
         <translation>Malha rodoviária reprojetada de {} para {} para os cálculos métricos.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="409"/>
+        <location filename="../traffic_panel.py" line="414"/>
         <source>The {} layer is labelled {} (projected, metres) but its coordinates look like degrees. Set the layer CRS to the geographic one (e.g. EPSG:4326 or EPSG:4674) and run again.</source>
         <translation>A camada {} está rotulada {} (projetado, metros), mas as coordenadas parecem graus. Defina o SRC da camada como o geográfico (ex.: EPSG:4326 ou EPSG:4674) e rode de novo.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="417"/>
+        <location filename="../traffic_panel.py" line="422"/>
         <source>The {} layer is labelled {} (geographic, degrees) but its coordinates are out of the longitude/latitude range. Set the layer CRS to the projected one the coordinates are in and run again.</source>
         <translation>A camada {} está rotulada {} (geográfico, graus), mas as coordenadas estão fora da faixa de longitude/latitude. Defina o SRC da camada como o projetado em que as coordenadas estão e rode de novo.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="432"/>
+        <location filename="../traffic_panel.py" line="437"/>
         <source>highway network</source>
         <translation>malha rodoviária</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="446"/>
+        <location filename="../traffic_panel.py" line="451"/>
         <source>centroids</source>
         <translation>centroides</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="552"/>
+        <location filename="../traffic_panel.py" line="557"/>
         <source>{} centroid(s) not connected to the highway network (nothing within {:.0f} m): zones {}.</source>
         <translation>{} centroide(s) não conectado(s) à malha rodoviária (nada a até {:.0f} m): zonas {}.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="560"/>
+        <location filename="../traffic_panel.py" line="565"/>
         <source>{} connector(s) longer than {:.0f} m: zones {}. Check the centroids or the network clip.</source>
         <translation>{} conector(es) com mais de {:.0f} m: zonas {}. Confira os centroides ou o recorte da malha.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="568"/>
+        <location filename="../traffic_panel.py" line="573"/>
         <source>Zones {} are anchored to the same network node; trips between them use only the connectors.</source>
         <translation>As zonas {} estão ancoradas no mesmo nó da malha; as viagens entre elas usam só os conectores.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="575"/>
+        <location filename="../traffic_panel.py" line="580"/>
         <source>Zones {} are anchored to the same highway link ({}).</source>
         <translation>As zonas {} estão ancoradas no mesmo trecho rodoviário ({}).</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="582"/>
+        <location filename="../traffic_panel.py" line="587"/>
         <source>{} centroid(s) anchored to the nearest node because the nearest link was ambiguous: zones {}.</source>
         <translation>{} centroide(s) ancorado(s) no nó mais próximo porque o trecho mais próximo era ambíguo: zonas {}.</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="685"/>
-        <source>Downloading the highway network…</source>
-        <translation>Baixando a malha rodoviária…</translation>
-    </message>
-    <message>
-        <location filename="../traffic_panel.py" line="701"/>
+        <location filename="../traffic_panel.py" line="740"/>
         <source>Could not download the highway network: {}</source>
         <translation>Não foi possível baixar a malha rodoviária: {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="723"/>
+        <location filename="../traffic_panel.py" line="762"/>
         <source>Highway network downloaded: {} segment(s) from {} source(s) into {}</source>
         <translation>Malha rodoviária baixada: {} trecho(s) de {} fonte(s) em {}</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="727"/>
-        <source> — {} trimmed, {} stitched</source>
-        <translation> — {} aparado(s), {} costurado(s)</translation>
-    </message>
-    <message>
-        <location filename="../traffic_panel.py" line="729"/>
+        <location filename="../traffic_panel.py" line="769"/>
         <source> — per-source report in the Message Log</source>
         <translation> — relatório por fonte no Registro de Mensagens</translation>
     </message>
     <message>
-        <location filename="../traffic_panel.py" line="734"/>
+        <location filename="../traffic_panel.py" line="774"/>
         <source>{}: {} segment(s) kept ({} downloaded, {} outside the area, {} removed whole, {} trimmed, {:.0f} m removed)</source>
         <translation>{}: {} trecho(s) mantido(s) ({} baixado(s), {} fora da área, {} removido(s) por inteiro, {} aparado(s), {:.0f} m removidos)</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="708"/>
+        <source>Could not obtain the boundary of the area: {}</source>
+        <translation>Não foi possível obter o limite da área: {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="713"/>
+        <source>Desire Lines — downloading the highway network ({})</source>
+        <translation>Desire Lines — baixando malha rodoviária ({})</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="723"/>
+        <source>Downloading the highway network in the background…</source>
+        <translation>Baixando a malha rodoviária em segundo plano…</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="737"/>
+        <source>Download cancelled</source>
+        <translation>Download cancelado</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="748"/>
+        <source>Could not load the downloaded network from {}</source>
+        <translation>Não foi possível carregar a malha baixada de {}</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="766"/>
+        <source> — {} removed as duplicates, {} trimmed, {} stitched</source>
+        <translation> — {} removido(s) por duplicidade, {} aparado(s), {} costurado(s)</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="790"/>
+        <source>Stitching: {} node-to-node, {} T</source>
+        <translation>Costura: {} nó-nó, {} T</translation>
+    </message>
+    <message>
+        <location filename="../traffic_panel.py" line="808"/>
+        <source>Phase times: download {}, merge {:.1f}s, stitch {:.1f}s, layer {:.1f}s (total {:.1f}s)</source>
+        <translation>Tempos por fase: download {}, junção {:.1f}s, costura {:.1f}s, camada {:.1f}s (total {:.1f}s)</translation>
     </message>
 </context>
 </TS>

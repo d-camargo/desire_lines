@@ -56,13 +56,20 @@ As quatro opções regionais (*Região Metropolitana*, *Microrregião*, *Mesorre
 
 O download é acionado pelo botão **Baixar malha** ("Download network"). Ao informar o *Estado (UF)*, o plugin preenche a lista **Fontes** ("Sources") com todas as bases rodoviárias oficiais disponíveis para aquela UF no catálogo do GisBR — a malha federal do DNIT (SNV) e as bases estaduais cadastradas (DERs) —, todas marcadas por padrão. O usuário pode desmarcar qualquer fonte antes de iniciar o download. Caso o download de qualquer uma das fontes marcadas falhe (por exemplo, por indisponibilidade de servidor), o processo é **interrompido imediatamente** com mensagem de erro nomeando a fonte que falhou, evitando gravar malhas incompletas.
 
+O download roda em **segundo plano**: o progresso e o cancelamento são acompanhados pelo **gerenciador de tarefas do QGIS** (canto inferior), e o QGIS continua perfeitamente usável durante todo o processo.
+
+Quanto ao recorte da malha:
+
+- No modo **UF inteira** e nos recortes regionais (*Região Metropolitana*, *Microrregião*, *Mesorregião* e *Macrorregião de saúde*), a malha é cortada pelo **limite oficial** (IBGE, via GisBR), com folga de 500 m na divisa.
+- No modo **Extensão dos centroides (+ raio)**, o recorte segue o retângulo dos centroides acrescido da distância máxima (*Conector máximo (m)*).
+
 Quando mais de uma fonte está marcada, o plugin realiza a **junção geométrica com precedência**:
 
 - **Precedência DNIT → estaduais**: a malha federal do DNIT é a referência principal e entra integralmente; as malhas estaduais subsequentes contribuem apenas com os trechos que não duplicam vias já presentes.
 - **Tratamento de sobreposição**: trechos estaduais sobrepostos à malha de referência ao longo de **≥ 100 m dentro de uma faixa de 20 m** de tolerância são aparados (subtraídos). Toques curtos em entroncamentos (< 100 m) são preservados para manter a integridade das conexões, e fragmentos residuais com menos de 50 m são descartados. Trechos planejados de qualquer fonte são eliminados previamente.
 - **Costura topológica (30 m)**: pontas soltas a **até 30 m** de outra via são conectadas por *snap* na ponta mais próxima (nó-nó) ou projetadas ortogonalmente dividindo a via atingida em uma junção em "T". Cruzamentos em níveis diferentes (como viadutos e passagens em desnível) sem pontas soltas próximas **não** são conectados, preservando a ausência de conversão real.
 
-Cada feição da malha resultante recebe os atributos de rastreabilidade **`fonte`** (identificador da base de origem, como `dnit_snv` ou `der_mg_rodovias`) e **`ajuste`** (vazio para inalterada, `'aparada'` para cortes de sobreposição, `'costurada'` para conexões de pontas, ou `'aparada+costurada'`). Os demais campos das fontes são unificados. A malha final é gravada no GeoPackage de saída como a camada **`malha_gisbr_<uf>`** (por exemplo, `malha_gisbr_mg`), carregada diretamente no projeto QGIS e selecionada automaticamente em *Usar uma camada existente*, pronta para o cálculo de capacidade e a alocação.
+Cada feição da malha resultante recebe os atributos de rastreabilidade **`fonte`** (identificador da base de origem, como `dnit_snv` ou `der_mg_rodovias`) e **`ajuste`** (vazio para inalterada, `'aparada'` para cortes de sobreposição, `'costurada'` para conexões de pontas, ou `'aparada+costurada'`). Os demais campos das fontes são unificados. A malha final é gravada no GeoPackage de saída como a camada **`malha_gisbr_<uf>`** (por exemplo, `malha_gisbr_mg`), carregada diretamente no projeto QGIS e selecionada automaticamente em *Usar uma camada existente*, pronta para o cálculo de capacidade e a alocação. A mensagem final na barra de mensagens separa os trechos **removidos por duplicidade**, **aparados** e **costurados** (com relatório detalhado por fonte no Registro de Mensagens).
 
 Quando utilizada a opção *Usar uma camada existente*, a área de estudo também é recortada pela extensão dos centroides (com buffer de conector), limitando o tamanho da rede e acelerando a montagem do grafo. Se o recorte falhar, o plugin exibe um aviso e segue com a malha inteira.
 
