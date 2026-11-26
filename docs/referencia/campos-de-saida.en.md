@@ -41,7 +41,7 @@ The **Synthetic AoN Assignment on a Delaunay network** layer contains the line s
 
 ## 3. HCM Capacity Layer (Tab 4 — Pre-assignment)
 
-Generated when you run the **Compute capacity** command on the plugin's fourth tab. It contains the processed and simplified road network with capacities computed according to the HCM 6th Edition procedures (Chapters 12 and 15), before any demand is assigned to it.
+Generated when you run the **Compute capacity** command on the Capacity tab of the highway panel. It contains the processed and simplified road network with capacities computed according to the HCM 6th Edition procedures (Chapters 12 and 15), before any demand is assigned to it.
 
 * **Default layer name:** `capacidade_hcm`
 * **Geometry type:** Line (`LineString`)
@@ -137,3 +137,42 @@ The style uses an intuitive 6-class colour scale (from dark green to purple) acc
 
 !!! warning "LOS as an operational approximation"
     The Level of Service assigned in the `los` field and in the automatic symbology is an **approximation derived from the `v/c` indicator**. The official HCM 6th Edition procedure defines LOS through specific performance measures: *Percent Time-Spent-Following (PTSF)* and *Average Travel Speed (ATS)* for two-lane highways (Chapter 15), or vehicle density per kilometre per lane for multilane highways and freeways (Chapter 12).
+
+---
+
+## 6. GEH Calibration with Counts Layer (Tab 4 — calibracao_geh)
+
+Generated upon running the **Calibrate** command on the Calibration tab of the highway panel, comparing assigned flows on the road network against observed data from a traffic count layer (e.g. PNCT/DNIT monitoring stations).
+
+* **Default layer / table name:** `calibracao_geh` (saved in the shared output GeoPackage).
+* **Geometry Type:** Point (`Point`).
+* **Responsible Modules:** `traffic/outputs.py` (`calibration_to_layer`), `traffic/counts.py` (`casar_postos`), `traffic/calibration.py` (`geh`, `faixa_geh`, `resumo`).
+
+### Layer Attribute Specification
+
+| Field | Type | Unit | Description |
+|---|---|---|---|
+| `posto` | Text (`String`) | - | Identifier of the count post (inherited from the field mapped in the UI or feature FID). |
+| `contagem` | Decimal (`Double`) | veh | Field-observed traffic volume (e.g. AADT). |
+| `modelado` | Decimal (`Double`) | veh | Consolidated modeled volume on the nearest link (both directions summed, if applicable) multiplied by the scale factor (`volume × factor`). |
+| `fator` | Decimal (`Double`) | dimensionless | Scaling multiplier applied to equalize model and count units (e.g. 10.0 to convert peak hour to AADT with $K = 0.10$). |
+| `dif` | Decimal (`Double`) | veh | Signed absolute difference between modeled and counted volume ($M - C$). |
+| `dif_pct` | Decimal (`Double`) | % | Percentage difference relative to count ($100 \times (M - C) / C$). Null when count is zero. |
+| `geh` | Decimal (`Double`) | dimensionless | Computed GEH statistic for the post ($GEH = \sqrt{2(M - C)^2 / (M + C)}$). Null if post has no matching road link. |
+| `faixa` | Text (`String`) | - | Normative calibration band: `A` ($GEH < 5$), `B` ($5 \le GEH < 10$), `C` ($10 \le GEH < 12$), `D` ($GEH \ge 12$), or `sem_link` (post located beyond maximum snapping distance). |
+| `link_id` | Text (`String`) | - | Identifier of the nearest road link to which the post was matched. Null when `faixa = 'sem_link'`. |
+| `dist_m` | Decimal (`Double`) | m | Euclidean distance in metres between count post and matched road link. Null when `faixa = 'sem_link'`. |
+
+---
+
+### Symbology and Categorized Style by GEH Band
+
+The `calibracao_geh` point layer is automatically styled with a native QGIS categorized symbol renderer (`QgsCategorizedSymbolRenderer`) applied to the **`faixa`** field, enabling immediate visual distinction between well-fitted locations and severe divergences:
+
+| Category | GEH Band | Hex Colour | Symbol | Meaning |
+|:---:|:---:|:---:|:---:|---|
+| **A** | `GEH < 5` | `#2ca02c` | Green circle (3.0 mm) | **Excellent calibration**: close match between model and count. |
+| **B** | `5 <= GEH < 10` | `#ffff33` | Yellow circle (3.0 mm) | **Acceptable fit**: within macro-simulation tolerance. |
+| **C** | `10 <= GEH < 12` | `#ff7f00` | Orange circle (3.0 mm) | **Moderate divergence**: warning for checking local parameters. |
+| **D** | `GEH >= 12` | `#d7191c` | Red circle (3.0 mm) | **Severe divergence**: priority location for calibration review. |
+| **sem_link** | No link | `#808080` | Grey circle (3.0 mm) | **Unmatched**: post beyond the configured maximum snapping distance. |

@@ -1,6 +1,6 @@
 # Métodos de Alocação e Escopo Operacional
 
-Esta página detalha os métodos de alocação de tráfego disponíveis no **Desire Lines**, as diferenças conceituais entre as abordagens de rede sintética e rede real, a classificação aproximada de Nível de Serviço (LOS), as limitações de escopo em áreas urbanas e o envelope de desempenho do motor de alocação.
+Esta página detalha os métodos de alocação de tráfego disponíveis no **Desire Lines**, as diferenças conceituais entre as abordagens de rede sintética e rede real, a classificação aproximada de Nível de Serviço (LOS), as limitações de escopo em áreas urbanas, o envelope de desempenho do motor de alocação e o procedimento de calibração da macrossimulação com contagens pelo GEH.
 
 ---
 
@@ -74,7 +74,7 @@ O método de **Frank-Wolfe (FW)** é o algoritmo clássico e consagrado para a r
 
 ## 2. Comparativo de Métodos no Desire Lines
 
-| Característica | AoN Sintético (Delaunay — Aba 3) | AoN Rodoviário (Aba 4) | MSA + BPR (Aba 4) | Frank-Wolfe + BPR (Aba 4) |
+| Característica | AoN Sintético (Delaunay — Aba 3) | AoN Rodoviário (Painel Rodovias) | MSA + BPR (Painel Rodovias) | Frank-Wolfe + BPR (Painel Rodovias) |
 |---|---|---|---|---|
 | **Tipo de Rede** | **Sintética** (Triangulação de Delaunay entre centroides) | **Real** (Malha rodoviária do SNV/DER via GISBR) | **Real** (Malha rodoviária do SNV/DER via GISBR) | **Real** (Malha rodoviária do SNV/DER via GISBR) |
 | **Passadas / Iterações** | Passada única (1-shot) | Passada única (1-shot) | Iterativo (passo 1/k, padrão 100 it) | Iterativo (passo ótimo λ, padrão 100 it) |
@@ -168,3 +168,57 @@ $$\text{erro} = \frac{|v - v_{\text{ref}}|}{v_{\text{ref}}}$$
 1. **Convergência Superior do Frank-Wolfe**: Com **Frank-Wolfe a 300 iterações**, o motor alcança erro médio de apenas **0,14%** (máximo de 0,7%) e TSTT de 7.478.543, praticamente indistinguível da referência analítica (< 0,03% de desvio). O novo padrão de **100 iterações e gap 0,001** oferece um equilíbrio excelente entre velocidade e precisão (erro médio de 0,46%).
 2. **Desempenho do MSA**: O MSA confirma convergência assintótica correta (erro médio de 0,07% em 2000 iterações), mas requer cerca de 6 a 7× mais iterações que o Frank-Wolfe para o mesmo gap relativo (medido em Sioux Falls: FW 50 it ≈ MSA 297 it; gap < 0,001 em 132 it no FW e 915 it no MSA).
 3. **Importância dos Parâmetros Informados e Mão Única**: As causas principais de divergência em redes calibradas não estão nos algoritmos de caminho mínimo, mas sim em impor mão dupla onde a via é de mão única (`mao_unica`) ou calcular capacidade/tempo livre por fórmulas genéricas quando os valores reais já são conhecidos (`capacidade` e `tempo_livre`).
+
+---
+
+## 7. Calibração da Macrossimulação pelo GEH
+
+A etapa de **calibração da macrossimulação** consiste em confrontar os volumes de tráfego alocados na rede viária contra contagens empíricas observadas em postos de monitoramento (como as séries históricas e contagens contínuas do PNCT/DNIT).
+
+### 7.1 Estatística GEH
+
+A estatística **GEH** (desenvolvida por Geoffrey E. Havers na década de 1970) é uma métrica de concordância empírica formulada especificamente para engenharia de tráfego. Diferente de erros percentuais simples — que distorcem a avaliação em trechos com baixo volume (pequenas diferenças absolutas geram erros percentuais enormes) e são complacentes em trechos saturados (grandes discrepâncias absolutas geram erros percentuais baixos) —, o GEH equilibra grandezas relativas e absolutas:
+
+$$GEH_i = \sqrt{ \frac{2 (M_i - C_i)^2}{M_i + C_i} }$$
+
+em que:
+
+* $M_i$ é o volume modelado no posto $i$ (após a aplicação do *Fator modelo → contagem*, $M = \text{volume alocado} \times \text{fator}$);
+* $C_i$ é o volume contado/observado em campo no posto $i$.
+
+Quando a soma $M_i + C_i = 0$, adota-se formalmente $GEH = 0,0$.
+
+### 7.2 Faixas Normativas de Classificação
+
+O valor do GEH de cada posto casado é classificado em quatro faixas operacionais (com limites fechados à esquerda):
+
+| Faixa GEH | Intervalo | Interpretação Operacional |
+|:---:|:---:|---|
+| **Faixa A** | $GEH < 5$ | **Excelente aderência**: os volumes modelado e observado são praticamente coincidentes. |
+| **Faixa B** | $5 \le GEH < 10$ | **Aderência aceitável**: discrepância tolerável para modelos de macrossimulação e planejamento regional. |
+| **Faixa C** | $10 \le GEH < 12$ | **Alerta de divergência moderada**: requer atenção; indica possíveis imprecisões de zoneamento ou capacidade. |
+| **Faixa D** | $GEH \ge 12$ | **Divergência severa**: inconsistência significativa; aponta distorções graves na rede, na matriz ou na contagem. |
+
+### 7.3 Critério DNIT ("% mínimo desejado")
+
+As notas técnicas do Plano Nacional de Contagem de Tráfego do DNIT (PNCT 2018, 2021, 2025 e 2026), em consonância com diretrizes internacionais consagradas (como o *Design Manual for Roads and Bridges* — DMRB, Volume 12, do Reino Unido), definem o **critério de calibração aceitável da macrossimulação** com base no percentual mínimo desejado de postos válidos:
+
+* **No mínimo 60%** dos postos de contagem situados na **Faixa A** ($GEH < 5$);
+* **No mínimo 95%** dos postos de contagem situados no acumulado das **Faixas A + B** ($GEH < 10$).
+
+O plugin avalia automaticamente o conjunto de postos casados e reporta na barra de mensagens se a modelagem **atende** ou **não atende** ao critério oficial do DNIT.
+
+### 7.4 Percentual do Erro Médio Quadrático (%RMSE)
+
+Além das faixas de GEH, o plugin calcula o **%RMSE** (*Percent Root Mean Square Error*), que expressa o desvio padrão dos erros em relação à média dos volumes contados:
+
+$$\%RMSE = 100 \times \frac{\sqrt{\frac{1}{n} \sum_{i=1}^n (M_i - C_i)^2}}{\frac{1}{n} \sum_{i=1}^n C_i}$$
+
+em que $n$ é o total de postos com trecho viário associado dentro da distância máxima de casamento. Postos isolados (`faixa = 'sem_link'`) não entram no cômputo de $n$.
+
+### 7.5 O que NÃO é feito (Limitações de Escopo)
+
+Para evitar ambiguidades metodológicas, destacam-se duas premissas fundamentais do escopo:
+
+1. **Sem ajuste matemático de matriz (ODME)**: O plugin realiza o diagnóstico e a verificação da aderência da alocação da matriz existente em relação às contagens de campo, mas **não executa estimação/ajuste reverso de matriz OD por contagens** (*Origin-Destination Matrix Estimation* — ODME). A alteração matemática de células da matriz para forçar convergência artificial deve ser realizada em ferramentas especializadas caso desejado pelo analista.
+2. **O GEH mede aderência, não é teste estatístico formal**: O GEH é uma métrica heurística e empírica consagrada na engenharia de tráfego. Ele **não constitui um teste estatístico de hipóteses** (como qui-quadrado, ANOVA ou teste $t$ de Student) e não estabelece distribuições amostrais teóricas ou níveis de significância probabilística ($p$-valor).

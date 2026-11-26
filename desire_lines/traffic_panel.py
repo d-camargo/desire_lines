@@ -18,11 +18,30 @@ from qgis.utils import iface
 
 try:
     from . import aon, ui_common
-    from .traffic import params, network, graph, outputs, assignment, gisbr_bridge, download_task
+    from .traffic import (
+        params,
+        network,
+        graph,
+        outputs,
+        assignment,
+        gisbr_bridge,
+        download_task,
+        counts,
+        calibration,
+    )
 except ImportError:
     import aon, ui_common
-    
-    from traffic import params, network, graph, outputs, assignment, gisbr_bridge, download_task
+    from traffic import (
+        params,
+        network,
+        graph,
+        outputs,
+        assignment,
+        gisbr_bridge,
+        download_task,
+        counts,
+        calibration,
+    )
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'traffic_panel_base.ui'))
@@ -47,8 +66,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.taMatrixCombo.currentIndexChanged.connect(self._traffic_matrix_changed)
         self.taCentroidsCombo.layerChanged.connect(self._traffic_centroids_changed)
         self.taCentroidsCombo.currentIndexChanged.connect(self._traffic_centroids_changed)
+        self.taCountsCombo.layerChanged.connect(self._traffic_counts_changed)
+        self.taCountsCombo.currentIndexChanged.connect(self._traffic_counts_changed)
         self.taRunCapacity.clicked.connect(self.run_capacity)
         self.taRunAssign.clicked.connect(self.run_assignment)
+        self.taRunCalibration.clicked.connect(self.run_calibration)
         self.taDownloadNetwork.clicked.connect(self.run_download)
         for radio in (self.taNetFromLayer, self.taNetFromGisbr):
             radio.toggled.connect(self._update_traffic_tab_state)
@@ -61,10 +83,12 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.taRecorte.currentIndexChanged.connect(self._update_traffic_tab_state)
         self.taMethod.currentIndexChanged.connect(self._update_traffic_tab_state)
         for combo in (self.taNetworkCombo, self.taMatrixCombo,
-                      self.taCentroidsCombo):
+                      self.taCentroidsCombo, self.taCountsCombo,
+                      self.taCalibAssignCombo):
             combo.layerChanged.connect(self._update_traffic_tab_state)
+            combo.currentIndexChanged.connect(self._update_traffic_tab_state)
         for combo in (self.taOriginField, self.taDestField, self.taValueField,
-                      self.taZoneIdField):
+                      self.taZoneIdField, self.taCountField):
             combo.fieldChanged.connect(self._update_traffic_tab_state)
         
         for text, data in (
@@ -81,11 +105,27 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self.taCentroidsCombo.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.taCentroidsCombo.setShowCrs(True)
         self.taNetworkCombo.setFilters(QgsMapLayerProxyModel.LineLayer)
+        self.taCountsCombo.setFilters(
+            QgsMapLayerProxyModel.Filter.PointLayer
+            if hasattr(QgsMapLayerProxyModel, 'Filter')
+            else QgsMapLayerProxyModel.PointLayer
+        )
+        self.taCalibAssignCombo.setFilters(
+            QgsMapLayerProxyModel.Filter.LineLayer
+            if hasattr(QgsMapLayerProxyModel, 'Filter')
+            else QgsMapLayerProxyModel.LineLayer
+        )
         
         self.taOriginField.setFilters(QgsFieldProxyModel.Int)
         self.taDestField.setFilters(QgsFieldProxyModel.Int)
         self.taZoneIdField.setFilters(QgsFieldProxyModel.Int)
         self.taValueField.setFilters(QgsFieldProxyModel.Double)
+        self.taCountField.setFilters(
+            QgsFieldProxyModel.Filter.Numeric
+            if hasattr(QgsFieldProxyModel, 'Filter')
+            else QgsFieldProxyModel.Numeric
+        )
+        self.taPostIdField.setAllowEmptyFieldName(True)
 
         self.taOutputFile.setStorageMode(QgsFileWidget.SaveFile)
         self.taOutputFile.setFilter('GeoPackage (*.gpkg)')
@@ -93,6 +133,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         self._traffic_network_changed()
         self._traffic_matrix_changed()
         self._traffic_centroids_changed()
+        self._traffic_counts_changed()
         self._update_traffic_tab_state()
 
     def _output_path(self):
@@ -202,6 +243,12 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         """Point the traffic-id field combo at the selected centroids layer."""
         self.taZoneIdField.setLayer(self.taCentroidsCombo.currentLayer())
 
+    def _traffic_counts_changed(self):
+        """Point the count-post field combos at the selected counts layer."""
+        layer = self.taCountsCombo.currentLayer()
+        self.taCountField.setLayer(layer)
+        self.taPostIdField.setLayer(layer)
+
     def _reload_recortes(self):
         """Populate the region combo from GisBR when a regional type is chosen (D5)."""
         self.taRecorte.clear()
@@ -292,6 +339,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             and self.taDestField.currentField()
             and self.taValueField.currentField()
             and self.taZoneIdField.currentField()
+        ))
+        self.taRunCalibration.setEnabled(bool(
+            self.taCalibAssignCombo.currentLayer()
+            and self.taCountsCombo.currentLayer()
+            and self.taCountField.currentField()
         ))
 
     def _traffic_centroid_points(self, layer, zone_id_field):
@@ -913,8 +965,10 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 g, arcs, od_pairs, method=method,
                 max_iter=self.taMaxIter.value(),
                 gap_tol=self.taGapTol.value())
-            self._publish_traffic_layer(
+            assigned_layer = self._publish_traffic_layer(
                 arcs, flows, stats, self.traffic_crs, None)
+            if assigned_layer is not None:
+                self.taCalibAssignCombo.setLayer(assigned_layer)
         except Exception as err:
             self._push_message(
                 self.tr('Traffic assignment failed: {}').format(err),
@@ -945,3 +999,92 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             self.tr('{} done: {} pairs allocated over {} arcs — {}').format(
                 method.upper(), stats['allocated'], road_arcs, '; '.join(notes)),
             level='success')
+
+    def run_calibration(self):
+        """Calibrate highway assignment against traffic counts (D3, D5)."""
+        assign_layer = self.taCalibAssignCombo.currentLayer()
+        posts_layer = self.taCountsCombo.currentLayer()
+        count_field = self.taCountField.currentField()
+        id_field = self.taPostIdField.currentField() or None
+        max_dist_m = self.taCalibMaxDist.value()
+        fator = self.taCalibFactor.value()
+
+        progress = self._push_progress(self.tr('Calibrating assignment…')) if iface is not None else None
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            try:
+                resultados, n_invalidos = counts.casar_postos(
+                    assign_layer=assign_layer,
+                    posts_layer=posts_layer,
+                    count_field=count_field,
+                    id_field=id_field,
+                    max_dist_m=max_dist_m,
+                    fator=fator,
+                    transform_context=QgsProject.instance().transformContext(),
+                )
+                if not resultados:
+                    self._push_message(
+                        self.tr('No valid count posts found.'), level='critical')
+                    return
+            except (ValueError, RuntimeError) as err:
+                self._push_message(str(err), level='critical')
+                return
+
+            try:
+                resumo = calibration.resumo(resultados)
+
+                crs = assign_layer.crs() if assign_layer is not None else None
+                mem_layer = outputs.calibration_to_layer(
+                    resultados, crs=crs, layer_name='calibracao_geh')
+                out_layer = self._write_layer_to_gpkg(mem_layer, 'calibracao_geh')
+                if out_layer is not None:
+                    outputs.apply_geh_style(out_layer)
+            except Exception as err:
+                self._push_message(
+                    self.tr('Calibration failed: {}').format(err), level='critical')
+                return
+        finally:
+            QApplication.restoreOverrideCursor()
+            if iface is not None and progress is not None:
+                iface.messageBar().popWidget(progress)
+
+        # Mensagem final e Message Log conforme D5
+        k = resumo['n_sem_link']
+        n_total = len(resultados)
+        sem_link_str = (
+            f" ({k} " + self.tr('without a link within {} m').format(f'{max_dist_m:.0f}') + ')'
+            if k else ''
+        )
+        pct_a = resumo['pct_a'] * 100.0
+        pct_ab = resumo['pct_ab'] * 100.0
+        rmse_str = f"{resumo['rmse_pct']:.1f}%" if resumo['rmse_pct'] is not None else 'n/a'
+        dnit_status = self.tr('met') if resumo['atende_dnit'] else self.tr('not met')
+        level = 'success' if resumo['atende_dnit'] else 'warning'
+
+        msg = self.tr(
+            'Calibration: {n} posts{sem_link} — A {pct_a:.1f}% · '
+            'A+B {pct_ab:.1f}% · %RMSE {rmse} — '
+            'DNIT criterion (≥60% A, ≥95% A+B): {status} (factor {factor})'
+        ).format(
+            n=n_total,
+            sem_link=sem_link_str,
+            pct_a=pct_a,
+            pct_ab=pct_ab,
+            rmse=rmse_str,
+            status=dnit_status,
+            factor=f'{fator:g}',
+        )
+        self._push_message(msg, level=level)
+
+        if n_invalidos:
+            QgsMessageLog.logMessage(
+                self.tr('{} count posts ignored (null, non-numeric or negative count)').format(n_invalidos),
+                'Desire Lines', Qgis.MessageLevel.Warning)
+
+        postos_geh = [r for r in resultados if r.get('geh') is not None]
+        postos_geh.sort(key=lambda r: r['geh'], reverse=True)
+        for r in postos_geh[:10]:
+            QgsMessageLog.logMessage(
+                self.tr('Post {}: count {}, modeled {}, GEH {:.2f}').format(
+                    r['posto'], f"{r['contagem']:g}", f"{r['modelado']:g}", r['geh']),
+                'Desire Lines', Qgis.MessageLevel.Info)

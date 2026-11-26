@@ -49,7 +49,7 @@ def parse_metadata_changelog(metadata_path: Path) -> list[tuple[str, list[str]]]
             current_lines = []
         else:
             if current_version is not None:
-                current_lines.append(stripped)
+                current_lines.append(stripped.replace("%%", "%"))
 
     if current_version is not None:
         entries.append((current_version, current_lines))

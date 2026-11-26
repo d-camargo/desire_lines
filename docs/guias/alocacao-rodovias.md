@@ -8,8 +8,13 @@ serviço por arco. É o resultado que a rede sintética da aba
 
 Para abrir o painel, use o **botão único da barra com seta de menu** (o clique abre o diálogo principal; a seta, o menu com *Desire Lines* e *Alocação em rodovias* ["Highway Assignment"]) ou acesse o menu **Vetor ▸ Desire Lines ▸ Alocação em rodovias**.
 O painel ancora no lado direito da janela do QGIS e pode permanecer aberto
-enquanto você navega no mapa ou edita camadas. Ele é dividido em duas abas
-internas: **Alocação** ("Allocation") e **Parâmetros HCM** ("HCM parameters").
+enquanto você navega no mapa ou edita camadas.
+
+Logo acima das abas, o campo **GeoPackage de saída** ("Output GeoPackage") define o
+arquivo `.gpkg` compartilhado onde todas as camadas geradas são gravadas (por padrão
+`~/output.gpkg`). Abaixo dele, o painel é dividido em quatro abas operacionais:
+**Rede** ("Network"), **Capacidade** ("Capacity"), **Alocação** ("Assignment") e
+**Calibração** ("Calibration").
 
 !!! danger "Escopo: rodovias rurais/interurbanas"
     A capacidade vem do **HCM cap. 15** (pista simples, duas faixas) e do
@@ -19,11 +24,10 @@ internas: **Alocação** ("Allocation") e **Parâmetros HCM** ("HCM parameters")
     procedimento urbano do HCM (caps. 16-19) exige dados de semáforo que a
     base oficial não traz. Leia esses arcos com reserva.
 
-## Aba Alocação
+## Aba Rede
 
-A aba **Alocação** ("Allocation") reúne as configurações da malha, da matriz e da alocação, além da seleção do arquivo de saída.
-
-### A rede: camada existente ou download via GisBR
+A aba **Rede** ("Network") define a malha viária de trabalho utilizada tanto para o
+cálculo de capacidade quanto para a alocação de tráfego.
 
 O grupo *Rede* ("Network") tem duas opções, mutuamente exclusivas:
 
@@ -76,63 +80,11 @@ Quando utilizada a opção *Usar uma camada existente*, a área de estudo també
 !!! note "Reprojeção automática para CRS métrico"
     Camadas em CRS geográfico (graus) — tanto no download via GisBR quanto em camada existente — são reprojetadas sozinhas para um CRS métrico (UTM da região, ou SIRGAS 2000 / Brazil Albers se a área cobrir mais de uma zona). A camada de saída sai nesse CRS, e o aviso *Malha rodoviária reprojetada…* (*Highway network reprojected…*) aparece na barra de mensagens (*message bar*).
 
-### A alocação
+## Aba Capacidade
 
-O grupo *Alocação* ("Assignment") pede a matriz e os centroides:
+A aba **Capacidade** ("Capacity") reúne as configurações operacionais e geométricas para o cálculo de capacidade HCM e parâmetros da rede viária.
 
-| Campo | O que escolher |
-|---|---|
-| *Matriz OD* ("OD matrix") | Camada da matriz — o combo lista camadas **sem geometria** |
-| *Origem* ("Origin") / *Destino* ("Destination") | Colunas de id de zona na matriz |
-| *Demanda (veíc/h)* ("Demand (veh/h)") | Coluna numérica de demanda — aqui a unidade importa: a capacidade HCM é em **veículos por hora por sentido** |
-| *Centroides* ("Centroids") | Camada de centroides |
-| *ID de Tráfego* ("Traffic id") | Campo dos centroides com o mesmo id usado em Origem/Destino |
-| *Conector máximo (m)* ("Max connector (m)") | Distância máxima aceita entre um centroide e a malha rodoviária (`max_dist_m`, padrão 5000 m) |
-
-Cada centroide é ligado à malha por um **conector** de ida e volta (os conectores ligam o centroide à malha para o cálculo, mas **não aparecem** na camada de saída), com
-capacidade alta e custo desprezível — ele existe só para injetar a demanda na
-rede, não representa via nenhuma. A âncora é o ponto mais próximo **do link** (o link é
-dividido ali). Centroide cuja distância à malha está além do
-*Conector máximo (m)* fica **fora** da alocação, e o plugin diz quantos.
-
-#### Método: AoN, Equilíbrio MSA ou Equilíbrio Frank-Wolfe
-
-O campo *Método* ("Method") define o algoritmo de carregamento:
-
-| Método | Como carrega | Quando usar |
-|---|---|---|
-| *Tudo-ou-Nada (sem restrição de capacidade)* ("All-or-Nothing (no capacity restraint)") | Uma passada pelo caminho de menor tempo a **fluxo livre**; todo o fluxo do par vai por esse caminho | Diagnóstico de sobrecarga: onde a demanda excede a capacidade se ninguém desviar |
-| *Equilíbrio MSA + BPR* ("Equilibrium MSA + BPR") | Iterativo: o tempo de cada arco cresce com o carregamento (função **BPR**, `t = t0 · (1 + α·(v/c)^β)`) e a demanda se redistribui pela **média de sucessivas** (passo rígido $1/k$) | Estimativa de equilíbrio para estudos didáticos ou comparativo com métodos clássicos |
-| *Equilíbrio Frank-Wolfe + BPR* ("Equilibrium Frank-Wolfe + BPR") | Iterativo com passo ótimo: a cada iteração avalia a função de Beckmann e calcula o tamanho de passo ótimo $\lambda$ por **busca linear por bisseção** | **Padrão recomendado**: Equilíbrio do Usuário de Wardrop com rápida convergência a gaps rigorosos |
-
-*Iterações* ("Iterations", padrão **100**, configurável até 5000) e *Tolerância do gap* ("Gap tolerance", padrão **0,001**) valem para os métodos de equilíbrio (**Frank-Wolfe** e **MSA**) — com Tudo-ou-Nada selecionado, ambos os campos ficam desabilitados. O algoritmo encerra quando o gap atinge a tolerância configurada ou quando se esgota o número de iterações; a mensagem final na barra de mensagens informa o gap alcançado e o número de iterações executadas.
-
-O método selecionado por padrão é o **Equilíbrio Frank-Wolfe + BPR**, pois sua convergência é substancialmente mais rápida que a do MSA, alcançando precisão superior em menos iterações.
-
-!!! warning "Sob AoN, vc > 1 não é equilíbrio — é sobrecarga"
-    No AoN a capacidade **nunca** volta para o custo, então nada impede que um
-    arco receba mais viagens do que comporta. O gap sai como "n/a" de
-    propósito. Um `vc` acima de 1 ali diz *"a demanda excede a capacidade neste
-    trecho"*, não *"este é o carregamento de equilíbrio"*.
-
-### GeoPackage de saída e botões de ação
-
-Abaixo do grupo de alocação, o campo *GeoPackage de saída* ("Output GeoPackage") define o arquivo `.gpkg` onde as camadas geradas serão gravadas. Se deixado em branco, o plugin utiliza o caminho padrão `~/output.gpkg`.
-
-Ao final da aba *Alocação*, dois botões acionam os processamentos:
-
-* **Calcular capacidade** ("Compute capacity"): roda **só** a parte HCM:
-  monta os arcos a partir da malha, resolve os parâmetros e publica a camada
-  **`capacidade_hcm`**, com `volume = 0`. Serve para conferir a capacidade e a
-  proveniência **antes** de gastar tempo com a alocação — e não exige matriz nem
-  centroides, só a rede. Arcos cuja capacidade sai **zero ou inválida** são descartados.
-* **Alocar** ("Assign"): executa o processo completo de construção do grafo, leitura da matriz OD e alocação de tráfego, publicando a camada **`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`** (conforme o método escolhido).
-
-## Aba Parâmetros HCM
-
-A aba **Parâmetros HCM** ("HCM parameters") contém o grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)"), que reúne as configurações operacionais e geométricas para o cálculo de capacidade HCM e parâmetros de rede.
-
-Nada é assumido em silêncio: a aba traz uma linha por parâmetro para os 18 parâmetros do sistema (tipo de segmento,
+O grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)") traz uma linha por parâmetro para os 18 parâmetros do sistema (tipo de segmento,
 faixas, terreno, % de veículos pesados, FFS, PHF, largura de faixa e
 acostamento, ultrapassagem proibida, densidade de acessos, divisão direcional,
 alfa e beta do BPR, capacidade informada, tempo livre e mão única).
@@ -167,11 +119,117 @@ A ordem de precedência rigorosa por feição e por parâmetro é:
     "capacidade calculada com o padrão de fábrica" — ver
     [Parâmetros HCM](../referencia/parametros-hcm.md).
 
+### Botão Calcular capacidade
+
+O botão **Calcular capacidade** ("Compute capacity"), localizado no rodapé da aba, roda **só** a parte HCM:
+monta os arcos a partir da malha, resolve os parâmetros operacionais e publica a camada
+**`capacidade_hcm`**, com `volume = 0` no GeoPackage de saída compartilhado. Serve para conferir a capacidade e a
+proveniência **antes** de gastar tempo com a alocação — e não exige matriz nem
+centroides, só a rede. Arcos cuja capacidade sai **zero ou inválida** são descartados.
+
+## Aba Alocação
+
+A aba **Alocação** ("Assignment") configura a demanda e executa a alocação de tráfego sobre a malha rodoviária.
+
+O grupo *Alocação* ("Assignment") pede a matriz e os centroides:
+
+| Campo | O que escolher |
+|---|---|
+| *Matriz OD* ("OD matrix") | Camada da matriz — o combo lista camadas **sem geometria** |
+| *Origem* ("Origin") / *Destino* ("Destination") | Colunas de id de zona na matriz |
+| *Demanda (veíc/h)* ("Demand (veh/h)") | Coluna numérica de demanda — aqui a unidade importa: a capacidade HCM é em **veículos por hora por sentido** |
+| *Centroides* ("Centroids") | Camada de centroides |
+| *ID de Tráfego* ("Traffic id") | Campo dos centroides com o mesmo id usado em Origem/Destino |
+| *Conector máximo (m)* ("Max connector (m)") | Distância máxima aceita entre um centroide e a malha rodoviária (`max_dist_m`, padrão 5000 m) |
+
+Cada centroide é ligado à malha por um **conector** de ida e volta (os conectores ligam o centroide à malha para o cálculo, mas **não aparecem** na camada de saída), com
+capacidade alta e custo desprezível — ele existe só para injetar a demanda na
+rede, não representa via nenhuma. A âncora é o ponto mais próximo **do link** (o link é
+dividido ali). Centroide cuja distância à malha está além do
+*Conector máximo (m)* fica **fora** da alocação, e o plugin diz quantos.
+
+### Método: AoN, Equilíbrio MSA ou Equilíbrio Frank-Wolfe
+
+O campo *Método* ("Method") define o algoritmo de carregamento:
+
+| Método | Como carrega | Quando usar |
+|---|---|---|
+| *Tudo-ou-Nada (sem restrição de capacidade)* ("All-or-Nothing (no capacity restraint)") | Uma passada pelo caminho de menor tempo a **fluxo livre**; todo o fluxo do par vai por esse caminho | Diagnóstico de sobrecarga: onde a demanda excede a capacidade se ninguém desviar |
+| *Equilíbrio MSA + BPR* ("Equilibrium MSA + BPR") | Iterativo: o tempo de cada arco cresce com o carregamento (função **BPR**, `t = t0 · (1 + α·(v/c)^β)`) e a demanda se redistribui pela **média de sucessivas** (passo rígido $1/k$) | Estimativa de equilíbrio para estudos didáticos ou comparativo com métodos clássicos |
+| *Equilíbrio Frank-Wolfe + BPR* ("Equilibrium Frank-Wolfe + BPR") | Iterativo com passo ótimo: a cada iteração avalia a função de Beckmann e calcula o tamanho de passo ótimo $\lambda$ por **busca linear por bisseção** | **Padrão recomendado**: Equilíbrio do Usuário de Wardrop com rápida convergência a gaps rigorosos |
+
+*Iterações* ("Iterations", padrão **100**, configurável até 5000) e *Tolerância do gap* ("Gap tolerance", padrão **0,001**) valem para os métodos de equilíbrio (**Frank-Wolfe** e **MSA**) — com Tudo-ou-Nada selecionado, ambos os campos ficam desabilitados. O algoritmo encerra quando o gap atinge a tolerância configurada ou quando se esgota o número de iterações; a mensagem final na barra de mensagens informa o gap alcançado e o número de iterações executadas.
+
+O método selecionado por padrão é o **Equilíbrio Frank-Wolfe + BPR**, pois sua convergência é substancialmente mais rápida que a do MSA, alcançando precisão superior em menos iterações.
+
+!!! warning "Sob AoN, vc > 1 não é equilíbrio — é sobrecarga"
+    No AoN a capacidade **nunca** volta para o custo, então nada impede que um
+    arco receba mais viagens do que comporta. O gap sai como "n/a" de
+    propósito. Um `vc` acima de 1 ali diz *"a demanda excede a capacidade neste
+    trecho"*, não *"este é o carregamento de equilíbrio"*.
+
+### Botão Alocar
+
+O botão **Alocar** ("Assign"), no rodapé da aba, executa o processo completo de construção do grafo, leitura da matriz OD e alocação de tráfego, publicando a camada **`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`** (conforme o método escolhido) no GeoPackage compartilhado.
+
+Ao concluir com sucesso, o plugin preenche e seleciona automaticamente a camada recém-publicada no campo *Camada de alocação* da **Aba Calibração**.
+
+## Aba Calibração
+
+A aba **Calibração** ("Calibration") confronta os volumes alocados pelo modelo contra contagens volumétricas observadas em campo (como os postos de contagem do PNCT/DNIT), calculando a estatística **GEH** e avaliando a aderência da macrossimulação a critérios normativos.
+
+### Entradas da calibração
+
+O grupo *Calibração com contagens de tráfego (GEH)* ("Calibration with traffic counts (GEH)") reúne os parâmetros necessários para a avaliação:
+
+| Campo | O que preencher | Descrição |
+|---|---|---|
+| *Camada de alocação* ("Assignment layer") | Camada linear de alocação | Camada contendo os atributos `link_id` e `volume`. É preenchida automaticamente com a camada recém-gerada ao acionar o botão *Alocar*. |
+| *Postos de contagem* ("Count posts") | Camada de pontos | Camada contendo a localização espacial dos postos de contagem de tráfego. |
+| *Campo da contagem* ("Count field") | Coluna numérica | Campo da camada de postos com o volume observado (ex.: VMDa). |
+| *Campo de id do posto (opcional)* ("Post id field (optional)") | Coluna identificadora (opcional) | Identificador legível do posto de contagem. Se vazio, o plugin adota o `FID` da feição. |
+| *Distância máxima de casamento* ("Max. snapping distance") | Distância em metros (padrão **200 m**) | Raio máximo de busca para associar um posto ao trecho alocado mais próximo. |
+| *Fator modelo → contagem* ("Model → count factor") | Fator numérico (padrão **1,0000**) | Multiplicador de escala aplicado ao volume alocado para compatibilizar unidades temporais e conceituais. |
+
+### Casamento espacial posto → trecho
+
+Para relacionar cada posto com a rede viária alocada, o algoritmo executa o casamento (*snapping*) espacial:
+
+1. **Trecho mais próximo e soma dos dois sentidos**: A camada de alocação possui uma feição por arco dirigido (`fw` e `bw`), e trechos divididos pela ancoragem de centroides mantêm o mesmo `link_id`. Como as contagens em postos rodoviários (como o PNCT) são bidirecionais, o plugin localiza o trecho mais próximo ao posto e **soma os volumes de todas as feições do mesmo `link_id` cuja distância ao posto esteja dentro de 1 metro da menor distância**. Esse procedimento soma os dois sentidos (`fw` + `bw`) do mesmo trecho físico (e preserva vias de mão única naturalmente em um arco único).
+2. **Postos sem trecho associado (`sem_link`)**: Se a menor distância entre o posto e a rede for superior à *Distância máxima de casamento* (padrão 200 m), o posto é considerado afastado da malha modelada. Ele é gravado na camada de saída com `faixa = 'sem_link'` e `geh` nulo (`NULL`), ficando **excluído** do total avaliado ($n$) nos percentuais do critério DNIT e no %RMSE.
+3. **Contagens inválidas**: Postos com contagens nulas, não numéricas, negativas ou com geometria vazia são desconsiderados do cálculo e contabilizados no registro de mensagens.
+
+### Fator modelo → contagem (Unidades)
+
+Em respeito à regra de transparência de que **nada é assumido em silêncio**, o plugin exige que o usuário defina explicitamente a conversão entre a unidade da matriz e a unidade das contagens:
+
+* A capacidade HCM e a matriz de viagens são modeladas habitualmente em **veículos por hora de pico** (veíc/h de pico).
+* As contagens de rodovias (como as bases oficiais do PNCT) costumam ser expressas em **Volume Médio Diário anual (VMDa)**.
+* Se a hora de pico representa, por exemplo, uma fração $K = 0,10$ do volume diário ($VMDa \approx \text{Pico} / K$), o **Fator modelo → contagem** deve ser definido como **$10,0$** ($1 / K$).
+* O volume modelado comparado é calculado como $M = \text{volume alocado} \times \text{fator}$. O fator utilizado fica registrado no atributo `fator` de cada feição de saída.
+
+### Botão Calibrar e leitura dos resultados
+
+O botão **Calibrar** ("Calibrate"), posicionado no rodapé da aba, executa o casamento espacial e o cálculo do GEH, gravando a camada de pontos **`calibracao_geh`** no GeoPackage compartilhado. A camada é carregada no projeto QGIS e estilizada com símbolos categorizados por faixa de GEH:
+
+* **Faixa A** ($GEH < 5$): verde (`#2ca02c`) — excelente calibração;
+* **Faixa B** ($5 \le GEH < 10$): amarelo (`#ffff33`) — aderência aceitável;
+* **Faixa C** ($10 \le GEH < 12$): laranja (`#ff7f00`) — divergência moderada;
+* **Faixa D** ($GEH \ge 12$): vermelho (`#d7191c`) — divergência acentuada;
+* **Sem link** (`sem_link`): cinza (`#808080`) — postos situados além da distância máxima de casamento.
+
+Ao concluir, a barra de mensagens do QGIS apresenta o diagnóstico geral:
+> `Calibração: N postos (k sem trecho a até X m) — A p% · A+B q% · %RMSE r — Critério DNIT (≥60% A, ≥95% A+B): atendido (ou não atendido) (fator f)`
+
+A notificação é exibida em verde (*success*) quando o critério oficial do DNIT é satisfeito e em amarelo (*warning*) caso não seja atendido. Adicionalmente, o **Registro de Mensagens** do QGIS (*Message Log*, aba *Desire Lines*) relaciona os 10 postos com maior valor de GEH (posto, contagem, modelado e GEH), orientando onde concentrar ajustes de capacidade, zoneamento ou geração de viagens.
+
 ## O resultado
 
-A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*, com nome conforme o método —
-**`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`** (e `capacidade_hcm` pelo botão **Calcular capacidade**) — e é estilizada por **`vc`** em classes fixas de A a F (verde até
-0,35; roxo grosso acima de 1,00). Campos principais:
+Todas as camadas são gravadas no arquivo configurado em **GeoPackage de saída**:
+as camadas de alocação **`alocacao_fw`**, **`alocacao_msa`** ou **`alocacao_aon`**, a camada prévia **`capacidade_hcm`** (gerada pelo botão *Calcular capacidade*) e a camada de pontos **`calibracao_geh`** (gerada pelo botão *Calibrar*).
+
+As camadas de arcos são estilizadas por **`vc`** em classes fixas de A a F (verde até
+0,35; roxo grosso acima de 1,00). Campos principais da alocação:
 
 | Campo | Significado |
 |---|---|
@@ -186,10 +244,10 @@ A camada sai no GeoPackage de saída configurado no campo *GeoPackage de saída*
 | `metodo`, `escopo` | Método usado (`fw`/`msa`/`aon`/`capacidade`) e `rodoviario` ou `urbano` |
 | `src_*` | Proveniência de cada parâmetro (incluindo `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` ou `padrao` |
 
-A mensagem de sucesso ao final é onde as perdas aparecem: pares alocados,
-número de arcos, resumo de proveniência, contagem de arcos urbanos, gap,
+A mensagem de sucesso ao final da alocação resume os pares alocados,
+número de arcos, proveniência, contagem de arcos urbanos, gap,
 linhas da matriz com id desconhecido e pares **inalcançáveis** (rede
-desconexa). Vale ler — ver [Campos de saída](../referencia/campos-de-saida.md)
+desconexa) — ver [Campos de saída](../referencia/campos-de-saida.md)
 e [Solução de problemas](../solucao-de-problemas.md).
 
 !!! warning "Os ids precisam usar o mesmo esquema"

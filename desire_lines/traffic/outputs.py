@@ -9,6 +9,10 @@ from qgis.core import (
     QgsField,
     QgsRuleBasedRenderer,
     QgsLineSymbol,
+    QgsCategorizedSymbolRenderer,
+    QgsRendererCategory,
+    QgsMarkerSymbol,
+    NULL,
 )
 
 from .hcm import level_of_service
@@ -294,6 +298,142 @@ def apply_vc_style(layer):
     layer.triggerRepaint()
 
 
+def _clean_field_val(val, target_type):
+    """Auxiliar para converter ou preservar nulos (NULL/None) ao preencher atributos."""
+    if val is None or val == NULL:
+        return None
+    if target_type == 'float':
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+    if target_type == 'str':
+        return str(val)
+    return val
+
+
+def calibration_to_layer(resultados, crs=None, layer_name='calibracao_geh'):
+    """Materializa os resultados de calibração GEH em uma camada vetorial de pontos.
+
+    Cria uma camada Point em memória com os campos de D5, usando `_create_field`
+    compatível com Qt5 e Qt6.
+
+    Args:
+        resultados (list[dict]): Lista de dicionários de resultados de calibração
+            (como retornado por `casar_postos`).
+        crs (QgsCoordinateReferenceSystem | str | None): Sistema de referência de coordenadas.
+        layer_name (str): Nome da camada (padrão 'calibracao_geh').
+
+    Returns:
+        QgsVectorLayer: Camada vetorial de pontos em memória com feições e atributos.
+    """
+    if layer_name is None:
+        layer_name = 'calibracao_geh'
+
+    if crs and hasattr(crs, 'authid') and callable(crs.authid) and crs.isValid():
+        crs_auth = crs.authid()
+    elif crs and hasattr(crs, 'authid') and not callable(crs.authid):
+        crs_auth = str(crs.authid)
+    elif crs:
+        crs_auth = str(crs)
+    else:
+        crs_auth = 'EPSG:4326'
+
+    uri = f"Point?crs={crs_auth}"
+    layer = QgsVectorLayer(uri, layer_name, 'memory')
+    provider = layer.dataProvider()
+
+    fields = [
+        _create_field('posto', 'string'),
+        _create_field('contagem', 'double'),
+        _create_field('modelado', 'double'),
+        _create_field('fator', 'double'),
+        _create_field('dif', 'double'),
+        _create_field('dif_pct', 'double'),
+        _create_field('geh', 'double'),
+        _create_field('faixa', 'string'),
+        _create_field('link_id', 'string'),
+        _create_field('dist_m', 'double'),
+    ]
+
+    provider.addAttributes(fields)
+    layer.updateFields()
+
+    features = []
+    for r in (resultados or []):
+        feat = QgsFeature(layer.fields())
+
+        geom = r.get('geometry')
+        if geom is not None:
+            if isinstance(geom, QgsGeometry):
+                feat.setGeometry(QgsGeometry(geom))
+            elif isinstance(geom, QgsPointXY):
+                feat.setGeometry(QgsGeometry.fromPointXY(geom))
+            elif isinstance(geom, (tuple, list)) and len(geom) >= 2:
+                feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(float(geom[0]), float(geom[1]))))
+
+        feat.setAttributes([
+            _clean_field_val(r.get('posto'), 'str'),
+            _clean_field_val(r.get('contagem'), 'float'),
+            _clean_field_val(r.get('modelado'), 'float'),
+            _clean_field_val(r.get('fator'), 'float'),
+            _clean_field_val(r.get('dif'), 'float'),
+            _clean_field_val(r.get('dif_pct'), 'float'),
+            _clean_field_val(r.get('geh'), 'float'),
+            _clean_field_val(r.get('faixa'), 'str'),
+            _clean_field_val(r.get('link_id'), 'str'),
+            _clean_field_val(r.get('dist_m'), 'float'),
+        ])
+        features.append(feat)
+
+    if features:
+        provider.addFeatures(features)
+        layer.updateExtents()
+
+    return layer
+
+
+GEH_CLASSES = [
+    ('A', 'Faixa A (GEH < 5)', '#2ca02c'),
+    ('B', 'Faixa B (5 <= GEH < 10)', '#ffff33'),
+    ('C', 'Faixa C (10 <= GEH < 12)', '#ff7f00'),
+    ('D', 'Faixa D (GEH >= 12)', '#d7191c'),
+    ('sem_link', 'Sem link associado', '#808080'),
+]
+
+
+def apply_geh_style(layer):
+    """Aplica o estilo de simbologia categorizada por faixa de GEH (D5).
+
+    Aplica um QgsCategorizedSymbolRenderer no campo 'faixa' com as cores de D5:
+    A verde, B amarelo, C laranja, D vermelho, sem_link cinza.
+
+    Args:
+        layer (QgsVectorLayer): Camada vetorial de saída da calibração GEH.
+    """
+    if not layer or not layer.isValid():
+        return
+
+    categories = []
+    for val, label, color_hex in GEH_CLASSES:
+        symbol = QgsMarkerSymbol.createSimple({
+            'color': color_hex,
+            'size': '3.0',
+            'outline_color': '#333333',
+        })
+        categories.append(QgsRendererCategory(val, symbol, label))
+
+    renderer = QgsCategorizedSymbolRenderer('faixa', categories)
+    layer.setRenderer(renderer)
+    layer.triggerRepaint()
+
+
 __all__ = [
-    'flows_to_layer', 'apply_vc_style', 'provenance_summary', 'urban_arc_count',
+    'flows_to_layer',
+    'apply_vc_style',
+    'calibration_to_layer',
+    'apply_geh_style',
+    'provenance_summary',
+    'urban_arc_count',
+    'GEH_CLASSES',
 ]

@@ -11,8 +11,12 @@ To open the panel, use the **single toolbar button with a menu arrow** (a click
 opens the main dialog; the arrow opens the menu with *Desire Lines* and
 *Highway Assignment*) or go to the menu **Vector ▸ Desire Lines ▸ Highway Assignment**.
 The panel docks on the right side of the QGIS window and can stay open while
-you navigate the map or edit layers. It is divided into two inner tabs:
-**Assignment** and **HCM parameters**.
+you navigate the map or edit layers.
+
+Just above the tabs, the **Output GeoPackage** field defines the shared `.gpkg`
+file where all generated layers are stored (by default `~/output.gpkg`).
+Below it, the panel is divided into four operational tabs:
+**Network**, **Capacity**, **Assignment**, and **Calibration**.
 
 !!! danger "Scope: rural/interurban highways"
     Capacity comes from **HCM ch. 15** (two-lane highways) and **ch. 12**
@@ -22,12 +26,10 @@ you navigate the map or edit layers. It is divided into two inner tabs:
     (chs. 16-19) requires signal data that the official dataset does not
     provide. Read those arcs with caution.
 
-## Assignment tab
+## Network tab
 
-The **Assignment** tab gathers the network, matrix and assignment settings, as
-well as the selection of the output file.
-
-### The network: existing layer or download via GisBR
+The **Network** tab defines the working road network used for both capacity
+computation and traffic assignment.
 
 The *Network* group has two mutually exclusive options:
 
@@ -133,82 +135,16 @@ plugin shows a warning and proceeds with the full network.
     one zone). The output layer comes out in that CRS, and the warning
     *Highway network reprojected…* appears in the message bar.
 
-### The assignment
+## Capacity tab
 
-The *Assignment* group asks for the matrix and the centroids:
+The **Capacity** tab gathers the operational and geometric settings for the
+HCM capacity computation and network parameters.
 
-| Field | What to choose |
-|---|---|
-| *OD matrix* | Matrix layer — the combo lists layers **without geometry** |
-| *Origin* / *Destination* | Zone id columns in the matrix |
-| *Demand (veh/h)* | Numeric demand column — the unit matters here: HCM capacity is in **vehicles per hour per direction** |
-| *Centroids* | Centroids layer |
-| *Traffic id* | Field of the centroids with the same id used in Origin/Destination |
-| *Max connector (m)* | Maximum accepted distance between a centroid and the road network (`max_dist_m`, default 5000 m) |
-
-Each centroid is linked to the network by a two-way **connector** (connectors
-tie the centroid to the network for the computation but **do not appear** in
-the output layer), with high capacity and negligible cost — it exists only to
-inject demand into the network and does not represent any road. The anchor is
-the nearest point **on the link** (the link is split there). A centroid whose
-distance to the network exceeds *Max connector (m)* is left **out** of the
-assignment, and the plugin tells you how many.
-
-#### Method: AoN, MSA Equilibrium or Frank-Wolfe Equilibrium
-
-The *Method* field defines the loading algorithm:
-
-| Method | How it loads | When to use |
-|---|---|---|
-| *All-or-Nothing (no capacity restraint)* | A single pass along the shortest path at **free-flow** time; all the flow of the pair takes that path | Overload diagnosis: where demand exceeds capacity if nobody diverts |
-| *Equilibrium MSA + BPR* | Iterative: the time of each arc grows with its loading (**BPR** function, `t = t0 · (1 + α·(v/c)^β)`) and demand is redistributed by the **method of successive averages** (fixed step $1/k$) | Equilibrium estimate for teaching purposes or comparison with classical methods |
-| *Equilibrium Frank-Wolfe + BPR* | Iterative with optimal step: at each iteration it evaluates the Beckmann function and computes the optimal step size $\lambda$ by **bisection line search** | **Recommended default**: Wardrop user equilibrium with fast convergence to tight gaps |
-
-*Iterations* (default **100**, configurable up to 5000) and *Gap tolerance*
-(default **0.001**) apply to the equilibrium methods (**Frank-Wolfe** and
-**MSA**) — with All-or-Nothing selected, both fields are disabled. The
-algorithm stops when the gap reaches the configured tolerance or when the
-number of iterations is exhausted; the final message in the message bar
-reports the gap reached and the number of iterations run.
-
-The method selected by default is **Equilibrium Frank-Wolfe + BPR**, because
-its convergence is substantially faster than that of MSA, reaching higher
-precision in fewer iterations.
-
-!!! warning "Under AoN, vc > 1 is not equilibrium — it is overload"
-    In AoN capacity **never** feeds back into the cost, so nothing prevents an
-    arc from receiving more trips than it can handle. The gap comes out as
-    "n/a" on purpose. A `vc` above 1 there says *"demand exceeds capacity on
-    this segment"*, not *"this is the equilibrium loading"*.
-
-### Output GeoPackage and action buttons
-
-Below the assignment group, the *Output GeoPackage* field defines the `.gpkg`
-file where the generated layers will be written. If left blank, the plugin
-uses the default path `~/output.gpkg`.
-
-At the end of the *Assignment* tab, two buttons trigger the processing:
-
-* **Compute capacity**: runs **only** the HCM part: builds the arcs from the
-  network, resolves the parameters and publishes the **`capacidade_hcm`**
-  layer, with `volume = 0`. It serves to check capacity and provenance
-  **before** spending time on the assignment — and it needs neither a matrix
-  nor centroids, only the network. Arcs whose capacity comes out **zero or
-  invalid** are dropped.
-* **Assign**: runs the full process of graph construction, OD matrix reading
-  and traffic assignment, publishing the **`alocacao_fw`**, **`alocacao_msa`**
-  or **`alocacao_aon`** layer (depending on the chosen method).
-
-## HCM parameters tab
-
-The **HCM parameters** tab contains the *HCM parameters (default, or override
-globally / by field)* group, which gathers the operational and geometric
-settings for the HCM capacity computation and network parameters.
-
-Nothing is assumed silently: the tab has one row per parameter for the 18
-parameters of the system (segment type, lanes, terrain, % heavy vehicles, FFS,
-PHF, lane and shoulder width, no-passing zones, access density, directional
-split, BPR alpha and beta, given capacity, free-flow time and one-way).
+The *HCM parameters (default, or override globally / by field)* group has
+one row per parameter for the 18 parameters of the system (segment type,
+lanes, terrain, % heavy vehicles, FFS, PHF, lane and shoulder width,
+no-passing zones, access density, directional split, BPR alpha and beta,
+given capacity, free-flow time and one-way).
 
 Each row offers **two inputs**: a global value typed into the control and a
 *field:* combobox to map any column of the highway layer.
@@ -245,12 +181,133 @@ The strict order of precedence per feature and per parameter is:
     dataset's data" from "capacity computed with the factory default" — see
     [HCM parameters](../referencia/parametros-hcm.md).
 
+### Compute capacity button
+
+The **Compute capacity** button, located at the bottom of the tab, runs **only**
+the HCM procedure: it builds the arcs from the highway network, resolves the operational
+parameters, and writes the **`capacidade_hcm`** layer (with `volume = 0`) to the shared
+output GeoPackage. It serves to check capacity and provenance **before** spending time
+on the assignment — needing neither an OD matrix nor centroids, only the network.
+Arcs whose resulting capacity comes out **zero or invalid** are dropped.
+
+## Assignment tab
+
+The **Assignment** tab configures the demand and runs the traffic assignment onto the highway network.
+
+The *Assignment* group asks for the matrix and the centroids:
+
+| Field | What to choose |
+|---|---|
+| *OD matrix* | Matrix layer — the combo lists layers **without geometry** |
+| *Origin* / *Destination* | Zone id columns in the matrix |
+| *Demand (veh/h)* | Numeric demand column — the unit matters here: HCM capacity is in **vehicles per hour per direction** |
+| *Centroids* | Centroids layer |
+| *Traffic id* | Field of the centroids with the same id used in Origin/Destination |
+| *Max connector (m)* | Maximum accepted distance between a centroid and the road network (`max_dist_m`, default 5000 m) |
+
+Each centroid is linked to the network by a two-way **connector** (connectors
+tie the centroid to the network for the computation but **do not appear** in
+the output layer), with high capacity and negligible cost — it exists only to
+inject demand into the network and does not represent any road. The anchor is
+the nearest point **on the link** (the link is split there). A centroid whose
+distance to the network exceeds *Max connector (m)* is left **out** of the
+assignment, and the plugin tells you how many.
+
+### Method: AoN, MSA Equilibrium or Frank-Wolfe Equilibrium
+
+The *Method* field defines the loading algorithm:
+
+| Method | How it loads | When to use |
+|---|---|---|
+| *All-or-Nothing (no capacity restraint)* | A single pass along the shortest path at **free-flow** time; all the flow of the pair takes that path | Overload diagnosis: where demand exceeds capacity if nobody diverts |
+| *Equilibrium MSA + BPR* | Iterative: the time of each arc grows with its loading (**BPR** function, `t = t0 · (1 + α·(v/c)^β)`) and demand is redistributed by the **method of successive averages** (fixed step $1/k$) | Equilibrium estimate for teaching purposes or comparison with classical methods |
+| *Equilibrium Frank-Wolfe + BPR* | Iterative with optimal step: at each iteration it evaluates the Beckmann function and computes the optimal step size $\lambda$ by **bisection line search** | **Recommended default**: Wardrop user equilibrium with fast convergence to tight gaps |
+
+*Iterations* (default **100**, configurable up to 5000) and *Gap tolerance*
+(default **0.001**) apply to the equilibrium methods (**Frank-Wolfe** and
+**MSA**) — with All-or-Nothing selected, both fields are disabled. The
+algorithm stops when the gap reaches the configured tolerance or when the
+number of iterations is exhausted; the final message in the message bar
+reports the gap reached and the number of iterations run.
+
+The method selected by default is **Equilibrium Frank-Wolfe + BPR**, because
+its convergence is substantially faster than that of MSA, reaching higher
+precision in fewer iterations.
+
+!!! warning "Under AoN, vc > 1 is not equilibrium — it is overload"
+    In AoN capacity **never** feeds back into the cost, so nothing prevents an
+    arc from receiving more trips than it can handle. The gap comes out as
+    "n/a" on purpose. A `vc` above 1 there says *"demand exceeds capacity on
+    this segment"*, not *"this is the equilibrium loading"*.
+
+### Assign button
+
+The **Assign** button, located at the bottom of the tab, runs the full process of
+graph construction, centroid connection, OD matrix reading, and traffic assignment.
+The result is written to the shared output GeoPackage as **`alocacao_fw`**,
+**`alocacao_msa`**, or **`alocacao_aon`** (depending on the chosen method).
+
+Upon successful completion, the plugin automatically populates and selects the
+newly published layer in the *Assignment layer* field of the **Calibration tab**.
+
+## Calibration tab
+
+The **Calibration** tab compares model assignment flows against observed field
+traffic counts (such as PNCT/DNIT monitoring stations), computing the **GEH** statistic
+and evaluating macro-simulation fit against normative criteria.
+
+### Calibration inputs
+
+The *Calibration with traffic counts (GEH)* group provides the following settings:
+
+| Field | What to fill in | Description |
+|---|---|---|
+| *Assignment layer* | Assignment line layer | Layer containing `link_id` and `volume` attributes. Automatically set to the layer generated upon clicking *Assign*. |
+| *Count posts* | Point layer | Layer containing the spatial locations of traffic count posts. |
+| *Count field* | Numeric field | Attribute column with observed traffic volume (e.g. AADT). |
+| *Post id field (optional)* | Identifier field (optional) | Human-readable post identifier. If left empty, the feature `FID` is used. |
+| *Max. snapping distance* | Distance in metres (default **200 m**) | Search radius for matching each post to the nearest assigned highway link. |
+| *Model → count factor* | Numeric factor (default **1.0000**) | Scaling multiplier applied to assigned volume to match temporal and conceptual units. |
+
+### Spatial post-to-link snapping
+
+To evaluate post counts against assigned flows, the algorithm performs spatial snapping:
+
+1. **Nearest link and both-direction sum**: The assignment layer contains one feature per directed arc (`fw` and `bw`), and segments divided to anchor centroids share the same `link_id`. Since highway traffic counts (such as PNCT AADT) are bidirectional, the plugin finds the nearest link to the post and **sums the volume of all features with the same `link_id` whose distance to the post is within 1 metre of the minimum distance**. This captures both travel directions (`fw` + `bw`) of the same physical segment (and naturally handles one-way roads as a single arc).
+2. **Posts without a matching link (`sem_link`)**: If the distance to the nearest highway link exceeds the configured *Max. snapping distance* (default 200 m), the post is considered isolated. It is written to the output layer with `faixa = 'sem_link'` and null (`NULL`) GEH, and is **excluded** from the total count ($n$) evaluated in the DNIT criterion and %RMSE.
+3. **Invalid count records**: Records with null, non-numeric, negative, or empty geometry values are excluded from the calculation and reported in the log.
+
+### Model → count factor (Units)
+
+Following the plugin rule that **nothing is assumed silently**, the user must explicitly provide the scaling factor between the matrix unit and the count unit:
+
+* HCM capacity and the assignment matrix are typically expressed in **peak-hour vehicles** (veh/h).
+* Highway counts (such as PNCT data series) are commonly published as **Annual Average Daily Traffic (AADT)**.
+* If the peak hour represents a fraction $K = 0.10$ of daily traffic ($AADT \approx \text{Peak} / K$), the **Model → count factor** should be set to **$10.0$** ($1 / K$).
+* The evaluated modeled volume is computed as $M = \text{assigned volume} \times \text{factor}$. The applied factor is recorded in the `fator` attribute of every output feature.
+
+### Calibrate button and interpreting results
+
+The **Calibrate** button at the bottom of the tab executes spatial snapping and GEH calculation, writing the **`calibracao_geh`** point layer to the shared output GeoPackage. The layer is loaded into QGIS and automatically styled with categorized symbols by GEH band:
+
+* **Band A** ($GEH < 5$): green (`#2ca02c`) — excellent calibration;
+* **Band B** ($5 \le GEH < 10$): yellow (`#ffff33`) — acceptable fit;
+* **Band C** ($10 \le GEH < 12$): orange (`#ff7f00`) — moderate divergence;
+* **Band D** ($GEH \ge 12$): red (`#d7191c`) — substantial divergence;
+* **Without link** (`sem_link`): grey (`#808080`) — posts located beyond the maximum snapping distance.
+
+Upon completion, the QGIS message bar displays the executive summary:
+> `Calibration: N posts (k without a link within X m) — A p% · A+B q% · %RMSE r — DNIT criterion (≥60% A, ≥95% A+B): met (or not met) (factor f)`
+
+The notification is shown in green (*success*) when the official DNIT criterion is met, and in yellow (*warning*) otherwise. In addition, the QGIS **Message Log** (*Desire Lines* tab) lists the 10 posts with the highest GEH values (post, count, modeled, GEH), highlighting priority locations for matrix or network refinements.
+
 ## The result
 
-The layer is written to the output GeoPackage set in the *Output GeoPackage*
-field, named according to the method —
-**`alocacao_fw`**, **`alocacao_msa`** or **`alocacao_aon`** (and `capacidade_hcm` via the **Compute capacity** button) — and is styled by **`vc`** in fixed classes from A to F (green up to
-0.35; thick purple above 1.00). Main fields:
+All layers are saved in the file configured in **Output GeoPackage**:
+the assignment layers **`alocacao_fw`**, **`alocacao_msa`**, or **`alocacao_aon`**, the preliminary **`capacidade_hcm`** layer (generated via the *Compute capacity* button), and the **`calibracao_geh`** point layer (generated via the *Calibrate* button).
+
+The arc layers are styled by **`vc`** in fixed classes from A to F (green up to
+0.35; thick purple above 1.00). Main assignment fields:
 
 | Field | Meaning |
 |---|---|
@@ -265,10 +322,10 @@ field, named according to the method —
 | `metodo`, `escopo` | Method used (`fw`/`msa`/`aon`/`capacidade`) and `rodoviario` or `urbano` |
 | `src_*` | Provenance of each parameter (including `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` or `padrao` |
 
-The success message at the end is where the losses appear: pairs assigned,
-number of arcs, provenance summary, count of urban arcs, gap, matrix rows with
-unknown ids and **unreachable** pairs (disconnected network). It is worth
-reading — see [Output fields](../referencia/campos-de-saida.md) and
+The success message at the end of assignment summarizes pairs assigned,
+number of arcs, provenance, count of urban arcs, gap, matrix rows with
+unknown ids, and **unreachable** pairs (disconnected network) — see
+[Output fields](../referencia/campos-de-saida.md) and
 [Troubleshooting](../solucao-de-problemas.md).
 
 !!! warning "The ids must use the same scheme"

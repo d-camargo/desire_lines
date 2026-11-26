@@ -1,6 +1,6 @@
 # Assignment Methods and Operational Scope
 
-This page details the traffic assignment methods available in **Desire Lines**, the conceptual differences between the synthetic-network and real-network approaches, the approximate Level of Service (LOS) classification, the scope limitations in urban areas, and the performance envelope of the assignment engine.
+This page details the traffic assignment methods available in **Desire Lines**, the conceptual differences between the synthetic-network and real-network approaches, the approximate Level of Service (LOS) classification, the scope limitations in urban areas, the performance envelope of the assignment engine, and the macro-simulation calibration procedure using GEH against counts.
 
 ---
 
@@ -74,7 +74,7 @@ The **Frank-Wolfe (FW)** method is the classic, well-established algorithm for s
 
 ## 2. Comparison of Methods in Desire Lines
 
-| Feature | Synthetic AoN (Delaunay — Tab 3) | Highway AoN (Tab 4) | MSA + BPR (Tab 4) | Frank-Wolfe + BPR (Tab 4) |
+| Feature | Synthetic AoN (Delaunay — Tab 3) | Highway AoN (Highway Panel) | MSA + BPR (Highway Panel) | Frank-Wolfe + BPR (Highway Panel) |
 |---|---|---|---|---|
 | **Network type** | **Synthetic** (Delaunay triangulation between centroids) | **Real** (SNV/DER road network via GISBR) | **Real** (SNV/DER road network via GISBR) | **Real** (SNV/DER road network via GISBR) |
 | **Passes / Iterations** | Single pass (1-shot) | Single pass (1-shot) | Iterative (1/k step, default 100 it) | Iterative (optimal step λ, default 100 it) |
@@ -168,3 +168,57 @@ $$\text{error} = \frac{|v - v_{\text{ref}}|}{v_{\text{ref}}}$$
 1. **Superior convergence of Frank-Wolfe**: With **Frank-Wolfe at 300 iterations**, the engine reaches a mean error of only **0.14%** (maximum 0.7%) and a TSTT of 7,478,543, practically indistinguishable from the analytical reference (< 0.03% deviation). The new default of **100 iterations and gap 0.001** offers an excellent balance between speed and accuracy (mean error 0.46%).
 2. **MSA performance**: MSA confirms correct asymptotic convergence (mean error 0.07% at 2000 iterations), but needs about 6 to 7× more iterations than Frank-Wolfe for the same relative gap (measured on Sioux Falls: FW 50 it ≈ MSA 297 it; gap < 0.001 in 132 it for FW and 915 it for MSA).
 3. **Importance of supplied parameters and one-way links**: The main causes of divergence in calibrated networks are not the shortest-path algorithms, but imposing two-way operation where the road is one-way (`mao_unica`), or computing capacity/free-flow time with generic formulas when the real values are already known (`capacidade` and `tempo_livre`).
+
+---
+
+## 7. GEH Macro-simulation Calibration
+
+The **macro-simulation calibration** phase compares traffic volumes assigned to the road network against empirical counts observed at field monitoring stations (such as historical count series and continuous counting stations from the DNIT PNCT).
+
+### 7.1 GEH Statistic
+
+The **GEH** statistic (developed by Geoffrey E. Havers in the 1970s) is an empirical goodness-of-fit metric specifically tailored for traffic engineering. Unlike simple percentage errors — which distort evaluation on low-volume links (small absolute differences yield huge percentage errors) and are lenient on heavily loaded links (large absolute discrepancies yield small percentage errors) —, GEH balances relative and absolute magnitudes:
+
+$$GEH_i = \sqrt{ \frac{2 (M_i - C_i)^2}{M_i + C_i} }$$
+
+where:
+
+* $M_i$ is the modeled volume at post $i$ (after applying the *Model → count factor*, $M = \text{assigned volume} \times \text{factor}$);
+* $C_i$ is the volume counted/observed in the field at post $i$.
+
+When the sum $M_i + C_i = 0$, the adopted value is formally $GEH = 0.0$.
+
+### 7.2 Normative Classification Bands
+
+The GEH value of each matched post is classified into four operational bands (with limits closed on the left):
+
+| GEH Band | Range | Operational Interpretation |
+|:---:|:---:|---|
+| **Band A** | $GEH < 5$ | **Excellent fit**: modeled and observed flows are practically coincident. |
+| **Band B** | $5 \le GEH < 10$ | **Acceptable fit**: tolerable discrepancy for macro-simulation and regional planning models. |
+| **Band C** | $10 \le GEH < 12$ | **Moderate divergence warning**: requires attention; indicates potential zoning or capacity inaccuracies. |
+| **Band D** | $GEH \ge 12$ | **Severe divergence**: significant inconsistency; points to major flaws in network, matrix, or counts. |
+
+### 7.3 DNIT Criterion ("Minimum Desired Percentage")
+
+Technical notes from DNIT's National Traffic Counting Program (PNCT 2018, 2021, 2025, and 2026), aligned with well-established international guidelines (such as the UK *Design Manual for Roads and Bridges* — DMRB, Volume 12), establish the **acceptable macro-simulation calibration criterion** based on the minimum desired percentage of valid posts:
+
+* **At least 60%** of count posts in **Band A** ($GEH < 5$);
+* **At least 95%** of count posts in cumulative **Bands A + B** ($GEH < 10$).
+
+The plugin automatically evaluates the matched posts and reports in the message bar whether the model **meets** or **does not meet** the official DNIT criterion.
+
+### 7.4 Percent Root Mean Square Error (%RMSE)
+
+In addition to GEH bands, the plugin computes **%RMSE** (*Percent Root Mean Square Error*), measuring the standard deviation of errors relative to the mean of observed counts:
+
+$$\%RMSE = 100 \times \frac{\sqrt{\frac{1}{n} \sum_{i=1}^n (M_i - C_i)^2}}{\frac{1}{n} \sum_{i=1}^n C_i}$$
+
+where $n$ is the total number of posts matched to a road segment within the maximum snapping distance. Isolated posts (`faixa = 'sem_link'`) are excluded from $n$.
+
+### 7.5 What is NOT Done (Scope Limitations)
+
+To prevent methodological ambiguity, two key scope principles are emphasized:
+
+1. **No mathematical matrix adjustment (ODME)**: The plugin evaluates and checks the fit of the existing matrix assignment against field counts, but **does not perform reverse OD matrix estimation from counts** (*Origin-Destination Matrix Estimation* — ODME). Altering matrix cells to artificially force convergence must be performed in specialized external software if desired.
+2. **GEH measures goodness-of-fit, not a formal statistical test**: GEH is a heuristic and empirical metric standard in traffic engineering. It **does not constitute a formal statistical hypothesis test** (such as Chi-squared, ANOVA, or Student's $t$-test) and does not assume theoretical sampling distributions or probabilistic significance levels ($p$-value).

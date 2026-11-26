@@ -36,19 +36,33 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="taOutputLayout">
+      <item>
+       <widget class="QLabel" name="taLabelOutput">
+        <property name="text">
+         <string>Output GeoPackage</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QgsFileWidget" name="taOutputFile"/>
+      </item>
+     </layout>
+    </item>
+    <item>
      <widget class="QTabWidget" name="taTabs">
       <property name="currentIndex">
        <number>0</number>
       </property>
-      <widget class="QScrollArea" name="tabAllocationScroll">
+      <widget class="QScrollArea" name="tabNetworkScroll">
        <attribute name="title">
-        <string>Alocação</string>
+        <string>Network</string>
        </attribute>
        <property name="widgetResizable">
         <bool>true</bool>
        </property>
-       <widget class="QWidget" name="tabAllocationContents">
-        <layout class="QVBoxLayout" name="tabAllocationLayout">
+       <widget class="QWidget" name="tabNetworkContents">
+        <layout class="QVBoxLayout" name="tabNetworkLayout">
          <item>
           <widget class="QGroupBox" name="taNetworkGroup">
            <property name="title">
@@ -120,36 +134,118 @@
             <item row="5" column="1">
              <widget class="QComboBox" name="taRecorteTipo"/>
             </item>
-             <item row="6" column="0">
-              <widget class="QLabel" name="taLabelRecorte">
-               <property name="text">
-                <string>Region</string>
-               </property>
-              </widget>
-             </item>
-             <item row="6" column="1">
-              <widget class="QComboBox" name="taRecorte"/>
-             </item>
-             <item row="7" column="0">
-              <widget class="QLabel" name="taLabelSources">
-               <property name="text">
-                <string>Sources</string>
-               </property>
-              </widget>
-             </item>
-             <item row="7" column="1">
-              <widget class="QListWidget" name="taSources"/>
-             </item>
-             <item row="8" column="0" colspan="2">
-              <widget class="QPushButton" name="taDownloadNetwork">
-               <property name="text">
-                <string>Download network</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
+            <item row="6" column="0">
+             <widget class="QLabel" name="taLabelRecorte">
+              <property name="text">
+               <string>Region</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="1">
+             <widget class="QComboBox" name="taRecorte"/>
+            </item>
+            <item row="7" column="0">
+             <widget class="QLabel" name="taLabelSources">
+              <property name="text">
+               <string>Sources</string>
+              </property>
+             </widget>
+            </item>
+            <item row="7" column="1">
+             <widget class="QListWidget" name="taSources"/>
+            </item>
+            <item row="8" column="0" colspan="2">
+             <widget class="QPushButton" name="taDownloadNetwork">
+              <property name="text">
+               <string>Download network</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </widget>
          </item>
+         <item>
+          <spacer name="tabNetworkSpacer">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QScrollArea" name="tabParamsScroll">
+       <attribute name="title">
+        <string>Capacity</string>
+       </attribute>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="tabParamsContents">
+        <layout class="QVBoxLayout" name="tabParamsLayout">
+         <item>
+          <widget class="QGroupBox" name="taParamsGroup">
+           <property name="title">
+            <string>HCM parameters (default, or override globally / by field)</string>
+           </property>
+           <layout class="QGridLayout" name="taParamsGrid"/>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="taCapacityButtonsLayout">
+           <item>
+            <spacer name="taCapacityButtonsSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="taRunCapacity">
+             <property name="text">
+              <string>Compute capacity</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <spacer name="tabParamsSpacer">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QScrollArea" name="tabAllocationScroll">
+       <attribute name="title">
+        <string>Assignment</string>
+       </attribute>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="tabAllocationContents">
+        <layout class="QVBoxLayout" name="tabAllocationLayout">
          <item>
           <widget class="QGroupBox" name="taAssignGroup">
            <property name="title">
@@ -318,19 +414,9 @@
           </widget>
          </item>
          <item>
-          <widget class="QLabel" name="taLabelOutput">
-           <property name="text">
-            <string>GeoPackage de saída</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QgsFileWidget" name="taOutputFile"/>
-         </item>
-         <item>
-          <layout class="QHBoxLayout" name="taButtonsLayout">
+          <layout class="QHBoxLayout" name="taAssignButtonsLayout">
            <item>
-            <spacer name="taButtonsSpacer">
+            <spacer name="taAssignButtonsSpacer">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>
              </property>
@@ -341,13 +427,6 @@
               </size>
              </property>
             </spacer>
-           </item>
-           <item>
-            <widget class="QPushButton" name="taRunCapacity">
-             <property name="text">
-              <string>Compute capacity</string>
-             </property>
-            </widget>
            </item>
            <item>
             <widget class="QPushButton" name="taRunAssign">
@@ -374,25 +453,139 @@
         </layout>
        </widget>
       </widget>
-      <widget class="QScrollArea" name="tabParamsScroll">
+      <widget class="QScrollArea" name="tabCalibrationScroll">
        <attribute name="title">
-        <string>Parâmetros HCM</string>
+        <string>Calibration</string>
        </attribute>
        <property name="widgetResizable">
         <bool>true</bool>
        </property>
-       <widget class="QWidget" name="tabParamsContents">
-        <layout class="QVBoxLayout" name="tabParamsLayout">
+       <widget class="QWidget" name="tabCalibrationContents">
+        <layout class="QVBoxLayout" name="tabCalibrationLayout">
          <item>
-          <widget class="QGroupBox" name="taParamsGroup">
+          <widget class="QGroupBox" name="taCalibGroup">
            <property name="title">
-            <string>HCM parameters (default, or override globally / by field)</string>
+            <string>Calibration with traffic counts (GEH)</string>
            </property>
-           <layout class="QGridLayout" name="taParamsGrid"/>
+           <layout class="QGridLayout" name="taCalibGrid">
+            <item row="0" column="0">
+             <widget class="QLabel" name="taLabelCalibAssign">
+              <property name="text">
+               <string>Assignment layer</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1" colspan="3">
+             <widget class="QgsMapLayerComboBox" name="taCalibAssignCombo"/>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="taLabelCounts">
+              <property name="text">
+               <string>Count posts</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1" colspan="3">
+             <widget class="QgsMapLayerComboBox" name="taCountsCombo"/>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="taLabelCountField">
+              <property name="text">
+               <string>Count field</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QgsFieldComboBox" name="taCountField"/>
+            </item>
+            <item row="2" column="2">
+             <widget class="QLabel" name="taLabelPostIdField">
+              <property name="text">
+               <string>Post id field</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="3">
+             <widget class="QgsFieldComboBox" name="taPostIdField"/>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="taLabelCalibMaxDist">
+              <property name="text">
+               <string>Max. snapping distance</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QDoubleSpinBox" name="taCalibMaxDist">
+              <property name="decimals">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <double>100000.000000000000000</double>
+              </property>
+              <property name="singleStep">
+               <double>50.000000000000000</double>
+              </property>
+              <property name="value">
+               <double>200.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="2">
+             <widget class="QLabel" name="taLabelCalibFactor">
+              <property name="text">
+               <string>Model → count factor</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="3">
+             <widget class="QDoubleSpinBox" name="taCalibFactor">
+              <property name="decimals">
+               <number>4</number>
+              </property>
+              <property name="minimum">
+               <double>0.000100000000000</double>
+              </property>
+              <property name="maximum">
+               <double>1000000.000000000000000</double>
+              </property>
+              <property name="singleStep">
+               <double>0.100000000000000</double>
+              </property>
+              <property name="value">
+               <double>1.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </widget>
          </item>
          <item>
-          <spacer name="tabParamsSpacer">
+          <layout class="QHBoxLayout" name="taCalibButtonsLayout">
+           <item>
+            <spacer name="taCalibButtonsSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="taRunCalibration">
+             <property name="text">
+              <string>Calibrate</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <spacer name="tabCalibrationSpacer">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
            </property>

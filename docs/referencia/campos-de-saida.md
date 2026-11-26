@@ -41,7 +41,7 @@ A camada de **Alocação Sintética AoN sobre rede Delaunay** contém os segment
 
 ## 3. Camada de Capacidade HCM (Aba 4 — Pré-alocação)
 
-Gerada ao executar o comando **Calcular capacidade** (*Compute capacity*) na quarta aba do plugin. Contém a malha viária processada e simplificada com as capacidades calculadas segundo os procedimentos do HCM 6ª Edição (Capítulos 12 e 15), antes de receber qualquer alocação de demanda.
+Gerada ao executar o comando **Calcular capacidade** (*Compute capacity*) na aba Capacidade do painel de rodovias. Contém a malha viária processada e simplificada com as capacidades calculadas segundo os procedimentos do HCM 6ª Edição (Capítulos 12 e 15), antes de receber qualquer alocação de demanda.
 
 * **Nome padrão da camada:** `capacidade_hcm`
 * **Tipo de Geometria:** Linha (`LineString`)
@@ -137,3 +137,42 @@ O estilo utiliza uma escala de cores intuitiva de 6 classes (de verde escuro a r
 
 !!! warning "LOS como aproximação operacional"
     A atribuição do Nível de Serviço no campo `los` e na simbologia automática é uma **aproximação derivada do indicador `v/c`**. O procedimento oficial do HCM 6ª Edição define o LOS através de parâmetros de desempenho específicos: *Percent Time-Spent-Following (PTSF)* e *Average Travel Speed (ATS)* para rodovias de pista simples (Capítulo 15), ou densidade de veículos por quilômetro e por faixa para rodovias multifaixas e freeways (Capítulo 12).
+
+---
+
+## 6. Camada de Calibração com Contagens GEH (Aba 4 — calibracao_geh)
+
+Gerada após executar o comando **Calibrar** (*Calibrate*) na aba Calibração do painel de rodovias, confrontando os fluxos alocados na malha rodoviária contra os dados de uma camada de postos de contagem observada (ex.: PNCT/DNIT).
+
+* **Nome padrão da camada / tabela:** `calibracao_geh` (gravada no GeoPackage compartilhado de saída).
+* **Tipo de Geometria:** Ponto (`Point`).
+* **Módulos responsáveis:** `traffic/outputs.py` (`calibration_to_layer`), `traffic/counts.py` (`casar_postos`), `traffic/calibration.py` (`geh`, `faixa_geh`, `resumo`).
+
+### Especificação dos Atributos da Camada
+
+| Campo | Tipo | Unidade | Descrição |
+|---|---|---|---|
+| `posto` | Texto (`String`) | - | Identificador do posto de contagem (herdado do campo mapeado na interface ou FID da feição). |
+| `contagem` | Decimal (`Double`) | veíc | Volume de tráfego contado em campo (ex.: VMDa). |
+| `modelado` | Decimal (`Double`) | veíc | Volume modelado consolidado no trecho mais próximo (soma dos dois sentidos, se houver) multiplicado pelo fator de escala (`volume × fator`). |
+| `fator` | Decimal (`Double`) | adimensional | Multiplicador de escala aplicado para equalizar as unidades do modelo e das contagens (ex.: 10,0 para converter pico em VMDa com $K = 0,10$). |
+| `dif` | Decimal (`Double`) | veíc | Diferença absoluta com sinal entre o volume modelado e o contado ($M - C$). |
+| `dif_pct` | Decimal (`Double`) | % | Diferença percentual em relação à contagem ($100 \times (M - C) / C$). Nulo quando a contagem é zero. |
+| `geh` | Decimal (`Double`) | adimensional | Estatística GEH calculada para o posto ($GEH = \sqrt{2(M - C)^2 / (M + C)}$). Nulo caso o posto fique sem trecho viário associado. |
+| `faixa` | Texto (`String`) | - | Faixa normativa de calibração do posto: `A` ($GEH < 5$), `B` ($5 \le GEH < 10$), `C` ($10 \le GEH < 12$), `D` ($GEH \ge 12$) ou `sem_link` (posto situado além da distância máxima de casamento). |
+| `link_id` | Texto (`String`) | - | Identificador do trecho rodoviário mais próximo com o qual o posto foi casado. Nulo quando `faixa = 'sem_link'`. |
+| `dist_m` | Decimal (`Double`) | m | Distância euclidiana em metros entre o posto de contagem e o trecho viário casado. Nulo quando `faixa = 'sem_link'`. |
+
+---
+
+### Simbologia e Estilo Categorizado por Faixa de GEH
+
+A camada de pontos `calibracao_geh` é configurada automaticamente com um renderizador categorizado nativo do QGIS (`QgsCategorizedSymbolRenderer`) aplicado sobre o campo **`faixa`**, permitindo identificação visual imediata dos pontos aderentes e dos pontos com divergência severa:
+
+| Categoria | Faixa GEH | Cor Hexadecimal | Símbolo | Significado |
+|:---:|:---:|:---:|:---:|---|
+| **A** | `GEH < 5` | `#2ca02c` | Círculo verde (3,0 mm) | **Excelente calibração**: aderência ótima entre modelo e contagem. |
+| **B** | `5 <= GEH < 10` | `#ffff33` | Círculo amarelo (3,0 mm) | **Aderência aceitável**: dentro da tolerância para macrossimulação. |
+| **C** | `10 <= GEH < 12` | `#ff7f00` | Círculo laranja (3,0 mm) | **Divergência moderada**: alerta para checagem de parâmetros locais. |
+| **D** | `GEH >= 12` | `#d7191c` | Círculo vermelho (3,0 mm) | **Divergência acentuada**: ponto prioritário para calibração. |
+| **sem_link** | Sem link | `#808080` | Círculo cinza (3,0 mm) | **Sem trecho associado**: posto além da distância máxima configurada. |

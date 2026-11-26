@@ -12,6 +12,9 @@ __author__ = 'dg.camargo@proton.me'
 __date__ = '2024-07-13'
 __copyright__ = 'Copyright 2024, Diego Camargo'
 
+import os
+import shutil
+import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -45,9 +48,9 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(set(widgets), set(traffic_params.PARAMS))
 
     def test_all_tab_pages_are_resizable_scroll_areas(self):
-        """Both pages of taTabs are (or contain) a QScrollArea with widgetResizable (D4)."""
+        """All 4 pages of taTabs are (or contain) a QScrollArea with widgetResizable (D4)."""
         tabs = self.dialog.taTabs
-        self.assertEqual(tabs.count(), 2)
+        self.assertEqual(tabs.count(), 4)
         for i in range(tabs.count()):
             page = tabs.widget(i)
             scroll = page if isinstance(page, QScrollArea) else page.findChild(QScrollArea)
@@ -56,23 +59,38 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
             self.assertTrue(scroll.widgetResizable())
 
     def test_hcm_params_group_tab_placement(self):
-        """The HCM Parameters page contains taParamsGroup and Allocation does not (D3)."""
+        """Each tab page contains its own group and action button, and no other (D4)."""
         tabs = self.dialog.taTabs
-        alloc_page = None
-        params_page = None
+        pairs = [
+            (self.dialog.taNetworkGroup, self.dialog.taDownloadNetwork),
+            (self.dialog.taParamsGroup, self.dialog.taRunCapacity),
+            (self.dialog.taAssignGroup, self.dialog.taRunAssign),
+            (self.dialog.taCalibGroup, self.dialog.taRunCalibration),
+        ]
+        for page_idx in range(tabs.count()):
+            page = tabs.widget(page_idx)
+            for pair_idx, (group, button) in enumerate(pairs):
+                if page_idx == pair_idx:
+                    self.assertTrue(page.isAncestorOf(group))
+                    self.assertTrue(page.isAncestorOf(button))
+                else:
+                    self.assertFalse(page.isAncestorOf(group))
+                    self.assertFalse(page.isAncestorOf(button))
+
+    def test_output_file_is_outside_tabs(self):
+        """taOutputFile is shared outside taTabs and not inside any tab page (D4)."""
+        tabs = self.dialog.taTabs
+        output_file = self.dialog.taOutputFile
+        self.assertFalse(tabs.isAncestorOf(output_file))
         for i in range(tabs.count()):
-            title = tabs.tabText(i)
-            if 'Alocação' in title:
-                alloc_page = tabs.widget(i)
-            elif 'Parâmetros' in title:
-                params_page = tabs.widget(i)
+            page = tabs.widget(i)
+            self.assertFalse(page.isAncestorOf(output_file))
 
-        self.assertIsNotNone(alloc_page)
-        self.assertIsNotNone(params_page)
-
-        params_group = self.dialog.taParamsGroup
-        self.assertTrue(params_page.isAncestorOf(params_group))
-        self.assertFalse(alloc_page.isAncestorOf(params_group))
+    def test_tab_titles_untranslated(self):
+        """The 4 tab titles are Network, Capacity, Assignment, Calibration without translation (D4)."""
+        tabs = self.dialog.taTabs
+        titles = [tabs.tabText(i) for i in range(tabs.count())]
+        self.assertEqual(titles, ['Network', 'Capacity', 'Assignment', 'Calibration'])
 
     def test_scroll_area_overflow_and_last_param_reachable(self):
         """When resized small, scroll inner height exceeds viewport and vbar max > 0."""
@@ -985,8 +1003,13 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.dialog.taValueField.setField('fluxo')
 
         published_layers = []
-        self.dialog._write_layer_to_gpkg = MagicMock(
-            side_effect=lambda layer, table: (published_layers.append(layer), layer)[1])
+        def _mock_write(layer, table):
+            project.addMapLayer(layer)
+            published_layers.append(layer)
+            return layer
+
+        self.dialog._write_layer_to_gpkg = MagicMock(side_effect=_mock_write)
+        self.addCleanup(lambda: project.removeMapLayers([l.id() for l in published_layers]))
 
         mock_iface = MagicMock()
         with patch('desire_lines.traffic_panel.iface', mock_iface), \
@@ -996,6 +1019,7 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(self.dialog.last_message[0], 'success')
         self.assertEqual(len(published_layers), 1)
         published_layer = published_layers[0]
+        self.assertEqual(self.dialog.taCalibAssignCombo.currentLayer(), published_layer)
 
         # Centroides criam conectores na malha; feições publicadas não os incluem
         self.assertGreater(published_layer.featureCount(), 0)
@@ -1057,6 +1081,210 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(self.dialog.last_message[0], 'warning')
         self.assertIn('5 removed as duplicates, 3 trimmed, 7 stitched',
                       self.dialog.last_message[1])
+
+    def _create_calib_assign_layer(self, crs='EPSG:31983', with_volume=True):
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        fields_def = 'field=link_id:string'
+        if with_volume:
+            fields_def += '&field=volume:double'
+        layer = QgsVectorLayer('LineString?crs={}&{}'.format(crs, fields_def), 'assign_layer', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([
+            QgsPointXY(500000.0, 7400000.0),
+            QgsPointXY(501000.0, 7400000.0),
+        ]))
+        feat['link_id'] = 'L1'
+        if with_volume:
+            feat['volume'] = 500.0
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+        return layer
+
+    def _create_calib_posts_layer(self, crs='EPSG:31983', count=500.0):
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        layer = QgsVectorLayer('Point?crs={}&field=contagem:double&field=posto_id:string'.format(crs), 'posts_layer', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(500500.0, 7400050.0)))
+        feat['contagem'] = count
+        feat['posto_id'] = 'P1'
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+        return layer
+
+    def test_calibration_button_disabled_without_posts_layer(self):
+        """taRunCalibration fica desabilitado sem camada de postos ou camada de alocação ou campo de contagem (D5)."""
+        from qgis.core import QgsProject
+        project = QgsProject.instance()
+        assign_layer = self._create_calib_assign_layer()
+        posts_layer = self._create_calib_posts_layer()
+        project.addMapLayers([assign_layer, posts_layer])
+        self.addCleanup(lambda: project.removeMapLayers([assign_layer.id(), posts_layer.id()]))
+
+        self.dialog.taCalibAssignCombo.setLayer(assign_layer)
+        self.dialog.taCountsCombo.setLayer(None)
+        self.dialog._update_traffic_tab_state()
+        self.assertFalse(self.dialog.taRunCalibration.isEnabled())
+
+        self.dialog.taCountsCombo.setLayer(posts_layer)
+        self.dialog.taCountField.setField('contagem')
+        self.dialog._update_traffic_tab_state()
+        self.assertTrue(self.dialog.taRunCalibration.isEnabled())
+
+        self.dialog.taCalibAssignCombo.setLayer(None)
+        self.dialog._update_traffic_tab_state()
+        self.assertFalse(self.dialog.taRunCalibration.isEnabled())
+
+    def test_run_calibration_missing_volume_field_critical(self):
+        """Camada de alocação sem o campo 'volume' resulta em mensagem critical (D5)."""
+        from qgis.core import QgsProject
+        project = QgsProject.instance()
+        assign_layer = self._create_calib_assign_layer(with_volume=False)
+        posts_layer = self._create_calib_posts_layer()
+        project.addMapLayers([assign_layer, posts_layer])
+        self.addCleanup(lambda: project.removeMapLayers([assign_layer.id(), posts_layer.id()]))
+
+        self.dialog.taCalibAssignCombo.setLayer(assign_layer)
+        self.dialog.taCountsCombo.setLayer(posts_layer)
+        self.dialog.taCountField.setField('contagem')
+
+        self.dialog.run_calibration()
+        self.assertEqual(self.dialog.last_message[0], 'critical')
+        self.assertIn('volume', self.dialog.last_message[1])
+
+    def test_run_calibration_success_dnit_met(self):
+        """Cenário que atende critério DNIT: mensagem success contendo 'met', e calibracao_geh com N feições (D5)."""
+        from qgis.core import QgsProject, QgsVectorLayer
+
+        tmpdir = tempfile.mkdtemp()
+        gpkg_path = os.path.join(tmpdir, 'out.gpkg')
+        self.addCleanup(lambda: shutil.rmtree(tmpdir, ignore_errors=True))
+
+        self.dialog.taOutputFile.setFilePath(gpkg_path)
+
+        project = QgsProject.instance()
+        assign_layer = self._create_calib_assign_layer()
+        posts_layer = self._create_calib_posts_layer(count=500.0)
+        project.addMapLayers([assign_layer, posts_layer])
+        self.addCleanup(lambda: project.removeMapLayers([assign_layer.id(), posts_layer.id()]))
+
+        self.dialog.taCalibAssignCombo.setLayer(assign_layer)
+        self.dialog.taCountsCombo.setLayer(posts_layer)
+        self.dialog.taCountField.setField('contagem')
+        self.dialog.taPostIdField.setField('posto_id')
+
+        def _add_vector_layer(uri, name, provider):
+            lyr = QgsVectorLayer(uri, name, provider)
+            project.addMapLayers([lyr])
+            self.addCleanup(lambda: project.removeMapLayers([lyr.id()]))
+            return lyr
+
+        mock_iface = MagicMock()
+        mock_iface.addVectorLayer.side_effect = _add_vector_layer
+
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_calibration()
+
+        self.assertEqual(self.dialog.last_message[0], 'success')
+        self.assertIn('met', self.dialog.last_message[1])
+        self.assertNotIn('not met', self.dialog.last_message[1])
+
+        calib_layers = project.mapLayersByName('calibracao_geh')
+        self.assertEqual(len(calib_layers), 1)
+        self.assertEqual(calib_layers[0].featureCount(), 1)
+
+    def test_run_calibration_warning_dnit_not_met(self):
+        """Cenário que não atende critério DNIT: mensagem warning com 'not met' (D5)."""
+        from qgis.core import QgsProject, QgsVectorLayer
+
+        tmpdir = tempfile.mkdtemp()
+        gpkg_path = os.path.join(tmpdir, 'out.gpkg')
+        self.addCleanup(lambda: shutil.rmtree(tmpdir, ignore_errors=True))
+
+        self.dialog.taOutputFile.setFilePath(gpkg_path)
+
+        project = QgsProject.instance()
+        assign_layer = self._create_calib_assign_layer()
+        posts_layer = self._create_calib_posts_layer(count=100.0)
+        project.addMapLayers([assign_layer, posts_layer])
+        self.addCleanup(lambda: project.removeMapLayers([assign_layer.id(), posts_layer.id()]))
+
+        self.dialog.taCalibAssignCombo.setLayer(assign_layer)
+        self.dialog.taCountsCombo.setLayer(posts_layer)
+        self.dialog.taCountField.setField('contagem')
+        self.dialog.taPostIdField.setField('posto_id')
+
+        def _add_vector_layer(uri, name, provider):
+            lyr = QgsVectorLayer(uri, name, provider)
+            project.addMapLayers([lyr])
+            self.addCleanup(lambda: project.removeMapLayers([lyr.id()]))
+            return lyr
+
+        mock_iface = MagicMock()
+        mock_iface.addVectorLayer.side_effect = _add_vector_layer
+
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_calibration()
+
+        self.assertEqual(self.dialog.last_message[0], 'warning')
+        self.assertIn('not met', self.dialog.last_message[1])
+
+    def test_run_assignment_leaves_calib_assign_combo_pointing_to_published_layer(self):
+        """run_assignment com o caminho de teste existente deixa taCalibAssignCombo apontando para a camada publicada (D5)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
+
+        road_layer = self._line_layer('EPSG:32614', [
+            [(700000.0, 4830000.0), (700100.0, 4830000.0)],
+            [(700100.0, 4830000.0), (700100.0, 4830100.0)],
+        ])
+
+        cent_layer = QgsVectorLayer('Point?crs=EPSG:32614&field=zone_id:int', 'centroids', 'memory')
+        c_feats = []
+        for zid, (x, y) in [(1, (700000.0, 4830005.0)), (2, (700100.0, 4830050.0))]:
+            feat = QgsFeature(cent_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(x, y)))
+            feat.setAttribute('zone_id', zid)
+            c_feats.append(feat)
+        cent_layer.dataProvider().addFeatures(c_feats)
+        cent_layer.updateExtents()
+
+        matrix_layer = QgsVectorLayer('None?field=origem:int&field=destino:int&field=fluxo:double', 'od', 'memory')
+        m_feat = QgsFeature(matrix_layer.fields())
+        m_feat.setAttribute('origem', 1)
+        m_feat.setAttribute('destino', 2)
+        m_feat.setAttribute('fluxo', 100.0)
+        matrix_layer.dataProvider().addFeatures([m_feat])
+
+        project = QgsProject.instance()
+        project.addMapLayers([road_layer, cent_layer, matrix_layer])
+        self.addCleanup(lambda: project.removeMapLayers([road_layer.id(), cent_layer.id(), matrix_layer.id()]))
+
+        self.dialog.taNetFromLayer.setChecked(True)
+        self.dialog.taNetworkCombo.setLayer(road_layer)
+        self.dialog.taCentroidsCombo.setLayer(cent_layer)
+        self.dialog.taZoneIdField.setField('zone_id')
+        self.dialog.taMatrixCombo.setLayer(matrix_layer)
+        self.dialog.taOriginField.setField('origem')
+        self.dialog.taDestField.setField('destino')
+        self.dialog.taValueField.setField('fluxo')
+
+        published_layers = []
+        def _mock_write(layer, table):
+            project.addMapLayer(layer)
+            published_layers.append(layer)
+            return layer
+
+        self.dialog._write_layer_to_gpkg = MagicMock(side_effect=_mock_write)
+        self.addCleanup(lambda: project.removeMapLayers([l.id() for l in published_layers]))
+
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_assignment()
+
+        self.assertEqual(len(published_layers), 1)
+        self.assertEqual(self.dialog.taCalibAssignCombo.currentLayer(), published_layers[0])
 
 
 if __name__ == "__main__":
