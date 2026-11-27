@@ -558,6 +558,43 @@ class TestNetworkModule(unittest.TestCase):
         self.assertNotIn(None, arcs)
         self.assertEqual([a.arc_id for a in arcs], [(1, 'fw'), (2, 'fw'), (2, 'bw')])
 
+    def test_build_network_complemento_por_id_vai_so_ao_link_certo(self):
+        """complementos {fid: attrs} só chegam ao link de mesmo fid (D4)."""
+        features = [
+            {'fid': 1, 'id': 10, 'geometry': [(0.0, 0.0), (1000.0, 0.0)]},
+            {'fid': 2, 'id': 20, 'geometry': [(1000.0, 0.0), (2000.0, 0.0)]},
+        ]
+        arcs = build_network(features, complementos={2: {'lanes': '3', 'oneway': 'yes'}},
+                             defaults={'pct_veic_pesados': 35})
+        por_link = {a.link_id: a for a in arcs if a.forward}
+        self.assertEqual(por_link[20].params['lanes'], 3)
+        self.assertEqual(por_link[20].sources['lanes'], 'complementar')
+        self.assertEqual([a.arc_id for a in arcs], [(10, 'fw'), (10, 'bw'), (20, 'fw')])
+        self.assertEqual(por_link[10].params['lanes'], 1)
+        self.assertEqual(por_link[10].sources['lanes'], 'padrao')
+        self.assertNotIn('complementar', por_link[10].sources.values())
+        for arc in arcs:
+            self.assertEqual(arc.params['pct_veic_pesados'], 35.0)
+            self.assertEqual(arc.sources['pct_veic_pesados'], 'usuario')
+
+    def test_build_network_complemento_por_qgsfeature_id(self):
+        """Em QgsFeature a chave do complemento é feat.id() (D4)."""
+        class FakeFeature:
+            def __init__(self, fid, pts):
+                self._fid, self._pts = fid, pts
+
+            def geometry(self):
+                return self._pts
+
+            def id(self):
+                return self._fid
+
+        feats = [FakeFeature(7, [(0, 0), (1000, 0)]), FakeFeature(8, [(1000, 0), (2000, 0)])]
+        arcs = build_network(feats, complementos={8: {'maxspeed': '100'}})
+        vel = {a.link_id: (a.params['vel_livre'], a.sources['vel_livre']) for a in arcs}
+        self.assertEqual(vel[8], (108.0, 'complementar'))
+        self.assertEqual(vel[7], (80.0, 'padrao'))
+
     def test_anchor_centroids_oneway_split_and_aon_routing(self):
         """anchor_centroids com link só-fw dividido no meio gera só pedaços fw
         e o AoN atravessa no sentido certo e não no oposto (D1)."""

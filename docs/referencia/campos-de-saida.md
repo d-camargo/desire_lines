@@ -39,7 +39,62 @@ A camada de **Alocação Sintética AoN sobre rede Delaunay** contém os segment
 
 ---
 
-## 3. Camada de Capacidade HCM (Aba 4 — Pré-alocação)
+## 3. Malha baixada do GisBR (Aba 4 — malha_gisbr_<uf>)
+
+Gerada ao executar o comando **Baixar malha** (*Download network*) na aba Rede do painel de rodovias. A malha une as bases oficiais selecionadas (como DNIT e DERs estaduais), aplicando remoção de duplicidades, corte de sobreposições e costura topológica.
+
+A partir da versão 0.10.0 (Decisões D2 e D3), a camada é gravada com um **esquema padronizado de 21 colunas** no vocabulário técnico do HCM, idêntico para qualquer Unidade da Federação.
+
+* **Nome padrão da camada / tabela:** `malha_gisbr_<uf>` (ex.: `malha_gisbr_sp`, `malha_gisbr_mg`), gravada no GeoPackage compartilhado de saída.
+* **Tipo de Geometria:** Linha (`LineString`).
+* **Módulos responsáveis:** `traffic/malha_gisbr.py` e `traffic/oficiais.py`.
+
+### Especificação das 21 Colunas Padronizadas
+
+| Campo | Tipo | Unidade | Descrição |
+|---|---|---|---|
+| `fonte` | Texto (`String`) | - | Identificador da fonte oficial de origem no GisBR (ex.: `dnit_snv`, `der_sp_rodovias`). |
+| `ajuste` | Texto (`String`) | - | Tratamento geométrico recebido na união: vazio (original intacto), `aparada` (corte de sobreposição), `costurada` (nó conectado) ou `aparada+costurada`. |
+| `rodovia` | Texto (`String`) | - | Código ou sigla da rodovia (ex.: `BR-116`, `SP 095`). |
+| `codigo_trecho` | Texto (`String`) | - | Identificador único do trecho ou subtrecho no cadastro do órgão de origem. |
+| `km_ini` | Decimal (`Real`) | km | Quilometragem de início do trecho rodoviário na fonte oficial. |
+| `km_fim` | Decimal (`Real`) | km | Quilometragem de término do trecho rodoviário na fonte oficial. |
+| `administracao` | Texto (`String`) | - | Órgão ou regime de administração da rodovia (ex.: estadual, federal, concessionária). |
+| `tipo_segmento` | Texto (`String`) | - | Tipologia HCM: `pista_dupla`, `2_faixas`, etc. |
+| `lanes` | Inteiro (`Integer`) | faixas | Número de faixas de rolamento por sentido. |
+| `pavimentado` | Inteiro (`Integer`) | 0/1 | Indicador de pavimento: `1` para pavimentado, `0` para não pavimentado. |
+| `urbano` | Inteiro (`Integer`) | 0/1 | Indicador de travessia urbana: `1` para urbano, `0` para rural/interurbano. |
+| `largura_faixa` | Decimal (`Real`) | m | Largura média da faixa de rolamento em metros. |
+| `largura_acostamento` | Decimal (`Real`) | m | Largura média do acostamento em metros. |
+| `terreno` | Texto (`String`) | - | Classificação do relevo (`plano`, `ondulado`, `montanhoso`). |
+| `pct_veic_pesados` | Decimal (`Real`) | % | Percentual de veículos pesados (caminhões e ônibus). |
+| `vel_livre` | Decimal (`Real`) | km/h | Velocidade de fluxo livre (*Free-Flow Speed* - FFS). |
+| `phf` | Decimal (`Real`) | - | Fator de Hora de Pico (*Peak Hour Factor*). |
+| `pct_no_passing` | Decimal (`Real`) | % | Percentual de extensão com ultrapassagem proibida. |
+| `access_density` | Decimal (`Real`) | acessos/km | Densidade de acessos por quilômetro. |
+| `directional_split` | Decimal (`Real`) | % | Distribuição direcional do fluxo. |
+| `mao_unica` | Inteiro (`Integer`) | 0/1 | Sentido de circulação: `1` para mão única no sentido da geometria, `0` para mão dupla. |
+
+### Tabela de Mapeamento da Identificação Oficial (D2c)
+
+Para cada fonte oficial mapeada, o módulo `traffic/oficiais.py` traduz os campos cadastrais específicos daquele órgão para as colunas padronizadas de identificação:
+
+| Campo padronizado | Tipo | DNIT (`dnit_snv`) | DER-SP (`der_sp_rodovias`) |
+|---|---|---|---|
+| `rodovia` | String | `Codigo_BR` | `Rodovia` |
+| `codigo_trecho` | String | `Codigo_SNV` | `Subtrecho` |
+| `km_ini` | Real | `Quilometragem_Inicio` | `KmInicial` |
+| `km_fim` | Real | `Quilometragem_Fim` | `KmFinal` |
+| `administracao` | String | `Administracao` | `Administra` |
+
+Fontes estaduais sem mapeamento cadastral cadastrado mantêm as colunas de identificação como nulas (`NULL`), aplicando normalmente as regras de tradução dos atributos de capacidade.
+
+!!! warning "Atributos brutos não são incluídos na malha padronizada"
+    Os atributos brutos específicos de cada fonte (que acumulavam dezenas de colunas esparsas e não padronizadas) **não vêm mais** na camada baixada. A rastreabilidade e a localização exata de qualquer segmento na base oficial do órgão são asseguradas pela combinação: **`fonte` + `codigo_trecho` + `km_ini` / `km_fim`**.
+
+---
+
+## 4. Camada de Capacidade HCM (Aba 4 — Pré-alocação)
 
 Gerada ao executar o comando **Calcular capacidade** (*Compute capacity*) na aba Capacidade do painel de rodovias. Contém a malha viária processada e simplificada com as capacidades calculadas segundo os procedimentos do HCM 6ª Edição (Capítulos 12 e 15), antes de receber qualquer alocação de demanda.
 
@@ -58,7 +113,7 @@ Possui exatamente os mesmos campos descritos na seção abaixo (Alocação em Ro
 
 ---
 
-## 4. Camada de Alocação em Rodovias Reais (Aba 4 — AoN / MSA / FW)
+## 5. Camada de Alocação em Rodovias Reais (Aba 4 — AoN / MSA / FW)
 
 Gerada após executar a alocação de demanda da matriz OD sobre a malha rodoviária real (SNV/DER) através do comando **Alocar** (*Assign*).
 
@@ -91,11 +146,12 @@ Gerada após executar a alocação de demanda da matriz OD sobre a malha rodovi�
 
 Para atender ao princípio de transparência total dos dados (**Regra D7 — "Nada é assumido em silêncio"**), a camada de saída inclui 18 campos adicionais indicando a proveniência exata de cada parâmetro operacional e de capacidade utilizado no cálculo.
 
-Os campos `src_*` podem assumir um dos três valores possíveis:
+Os campos `src_*` podem assumir um dos quatro valores possíveis:
 
-* **`oficial`**: O parâmetro foi lido diretamente de um atributo existente na camada de rodovias de entrada (via mapeamento de campo na UI ou busca em candidatos).
-* **`usuario`**: O parâmetro foi informado ou sobrescrito manualmente pelo usuário na interface do plugin.
-* **`padrao`**: O parâmetro não constava na camada de entrada e o plugin aplicou o valor padrão alinhado às diretrizes do DNIT/HCM.
+* **`oficial`**: O parâmetro foi lido diretamente de um atributo existente na camada de rodovias de entrada (via mapeamento de campo na UI, busca em candidatos padrão ou atributos oficiais traduzidos).
+* **`complementar`**: O parâmetro foi obtido a partir de uma feição correspondente em uma **camada complementar** espacialmente casada por proximidade (Decisões D4 e D6).
+* **`usuario`**: O parâmetro foi informado ou sobrescrito manualmente pelo usuário na interface do plugin (parâmetro fixado via *Fixar* ou valor digitado em *Valor onde não há dado*).
+* **`padrao`**: O parâmetro não constava na camada de entrada nem no complemento, e o plugin aplicou o valor padrão por classe de rodovia ou do catálogo residual DNIT/HCM.
 
 | Campo de Proveniência | Parâmetro Associado | Descrição |
 |---|---|---|
@@ -114,13 +170,13 @@ Os campos `src_*` podem assumir um dos três valores possíveis:
 | `src_directional_split` | `directional_split` | Proveniência da distribuição direcional do tráfego (ex.: 50/50, 60/40). |
 | `src_bpr_alpha` | `bpr_alpha` | Proveniência do parâmetro `alfa` da equação de impedância BPR. |
 | `src_bpr_beta` | `bpr_beta` | Proveniência do parâmetro `beta` da equação de impedância BPR. |
-| `src_capacidade` | `capacidade` | Proveniência da capacidade por sentido informada (`oficial`, `usuario` ou `padrao`). |
-| `src_tempo_livre` | `tempo_livre` | Proveniência do tempo de fluxo livre informado (`oficial`, `usuario` ou `padrao`). |
-| `src_mao_unica` | `mao_unica` | Proveniência da indicação de sentido único / mão única (`oficial`, `usuario` ou `padrao`). |
+| `src_capacidade` | `capacidade` | Proveniência da capacidade por sentido informada (`oficial`, `complementar`, `usuario` ou `padrao`). |
+| `src_tempo_livre` | `tempo_livre` | Proveniência do tempo de fluxo livre informado (`oficial`, `complementar`, `usuario` ou `padrao`). |
+| `src_mao_unica` | `mao_unica` | Proveniência da indicação de sentido único / mão única (`oficial`, `complementar`, `usuario` ou `padrao`). |
 
 ---
 
-## 5. Simbologia e Estilo Graduado por v/c
+## 6. Simbologia e Estilo Graduado por v/c
 
 As camadas de saída de alocação em rodovias (`alocacao_aon`, `alocacao_msa` e `alocacao_fw`) são configuradas automaticamente com um renderizador de simbologia graduada nativo do QGIS (`QgsGraduatedSymbolRenderer`) aplicado sobre o campo **`vc`**.
 
@@ -140,7 +196,7 @@ O estilo utiliza uma escala de cores intuitiva de 6 classes (de verde escuro a r
 
 ---
 
-## 6. Camada de Calibração com Contagens GEH (Aba 4 — calibracao_geh)
+## 7. Camada de Calibração com Contagens GEH (Aba 4 — calibracao_geh)
 
 Gerada após executar o comando **Calibrar** (*Calibrate*) na aba Calibração do painel de rodovias, confrontando os fluxos alocados na malha rodoviária contra os dados de uma camada de postos de contagem observada (ex.: PNCT/DNIT).
 

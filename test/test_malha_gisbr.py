@@ -16,7 +16,7 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
                        QgsCoordinateTransformContext, QgsFeature, QgsGeometry,
                        QgsPointXY, QgsProject, QgsVectorLayer)
 
-from desire_lines.traffic import gisbr_bridge
+from desire_lines.traffic import gisbr_bridge, oficiais
 from desire_lines.traffic.malha_gisbr import (DownloadCancelado, TOL_LIMITE_M,
                                             baixar_malha, subtrai_sobreposicao)
 from desire_lines.traffic.network import build_network
@@ -191,21 +191,13 @@ class TestBaixarMalha(unittest.TestCase):
         self.assertTrue(camada.crs().isValid())
         self.assertFalse(camada.crs().isGeographic())
         nomes = camada.fields().names()
-        self.assertEqual(nomes[:2], ['fonte', 'ajuste'])
-        for campo in ('vl_br', 'ds_superfi', 'codigo'):
-            self.assertIn(campo, nomes)
+        self.assertEqual(nomes, list(oficiais.ESQUEMA_PADRONIZADO.keys()))
         feats = list(camada.getFeatures())
-        # Sem o PLA e sem a duplicata.
-        self.assertNotIn('PLA', [f['ds_superfi'] for f in feats])
-        self.assertNotIn('MG-DUP', [f['codigo'] for f in feats])
         # A BR foi dividida no T: 2 pedaços DNIT + o ramo DER.
         fontes = sorted(f['fonte'] for f in feats)
         self.assertEqual(fontes, ['der_mg_rodovias', 'dnit_snv', 'dnit_snv'])
         for f in feats:
             self.assertEqual(f['ajuste'], 'costurada')
-        # Conflito de tipo (String × Integer) vira String.
-        self.assertEqual(camada.fields().field('vl_br').type(),
-                         camada.fields().field('fonte').type())
         # Junção em T vira nó compartilhado: um único componente conexo.
         self.assertEqual(_componentes(camada), 1)
         # bbox pedido em EPSG:4674 (D7).
@@ -270,7 +262,7 @@ class TestBaixarMalha(unittest.TestCase):
         # (b) cruza a divisa: (6000, 1000) -> (6000, 4000)
         # (c) corre a 200 m por fora da divisa: (5000, 2200) -> (8000, 2200)
         camada = _camada_4674(
-            [('codigo', 'string'), ('ds_superfi', 'string')],
+            [('Codigo_SNV', 'string'), ('ds_superfi', 'string')],
             [
                 ([(6000, 4000), (8000, 4000)], ['LINHA-A', 'PAV']),
                 ([(6000, 1000), (6000, 4000)], ['LINHA-B', 'PAV']),
@@ -293,7 +285,7 @@ class TestBaixarMalha(unittest.TestCase):
         self.assertAlmostEqual(bbox_pedido[2], rect_limite.xMaximum())
         self.assertAlmostEqual(bbox_pedido[3], rect_limite.yMaximum())
 
-        feats = {f['codigo']: f for f in res_layer.getFeatures()}
+        feats = {f['codigo_trecho']: f for f in res_layer.getFeatures()}
 
         # (a) linha dentro do bbox mas fora do "L" -> sai e conta em fora_do_recorte
         self.assertNotIn('LINHA-A', feats)
@@ -351,6 +343,69 @@ class TestBaixarMalha(unittest.TestCase):
         ctx = QgsCoordinateTransformContext()
         camada, rel, _ = self._baixar([_dnit(), _der()], transform_context=ctx)
         self.assertTrue(camada.isValid())
+
+    def test_esquema_padronizado_dnit_der(self):
+        """(a) esquema padronizado, tipo_segmento, urbano=1 e rodovia; (b) sem campos brutos; (c) relatorio preenchidos."""
+        fonte_dnit = {
+            'id': 'dnit_snv',
+            'nome': 'DNIT — SNV',
+            'protocolo': 'wfs',
+            'rede': {'tipo': 'rodoviaria'},
+        }
+        fonte_der = {
+            'id': 'der_sp_rodovias',
+            'nome': 'DER-SP',
+            'protocolo': 'wfs',
+            'ufs': ['SP'],
+            'rede': {'tipo': 'rodoviaria'},
+        }
+
+        # DNIT: DUP e campos extras/brutos
+        camada_dnit = _camada_4674(
+            [('Codigo_BR', 'string'), ('Superficie_Federal', 'string'),
+             ('TipoPista', 'string'), ('Observacao', 'string')],
+            [([(0, 0), (5000, 0)], ['101', 'DUP', 'DUP', 'Obs DNIT'])],
+            'dnit_dup'
+        )
+
+        # DER: PAV / Sim e campos extras/brutos
+        camada_der = _camada_4674(
+            [('Rodovia', 'string'), ('TipoPista', 'string'),
+             ('PerimetroU', 'string'), ('Observacao', 'string')],
+            [([(0, 2000), (5000, 2000)], ['SP-095', 'PAV', 'Sim', 'Obs DER'])],
+            'der_pav_sim'
+        )
+
+        with patch.object(gisbr_bridge, 'fontes_rodoviarias',
+                          return_value=[fonte_dnit, fonte_der]), \
+             patch.object(gisbr_bridge, 'baixar_fonte',
+                          side_effect=[camada_dnit, camada_der]):
+            saida, rel = baixar_malha('SP', bbox=BBOX_UTM, bbox_crs='EPSG:32723')
+
+        # (a) saida.fields().names() é exatamente o esquema
+        nomes = saida.fields().names()
+        self.assertEqual(nomes, list(oficiais.ESQUEMA_PADRONIZADO.keys()))
+
+        feats = list(saida.getFeatures())
+        self.assertEqual(len(feats), 2)
+        feat_dnit = [f for f in feats if f['fonte'] == 'dnit_snv'][0]
+        feat_der = [f for f in feats if f['fonte'] == 'der_sp_rodovias'][0]
+
+        # o trecho DNIT tem tipo_segmento='pista_dupla'
+        self.assertEqual(feat_dnit['tipo_segmento'], 'pista_dupla')
+
+        # o DER tem urbano=1 e rodovia preenchida
+        self.assertEqual(feat_der['urbano'], 1)
+        self.assertEqual(feat_der['rodovia'], 'SP-095')
+
+        # (b) nenhum campo bruto (TipoPista, Observacao) na saída
+        self.assertNotIn('TipoPista', nomes)
+        self.assertNotIn('Observacao', nomes)
+
+        # (c) relatorio['preenchidos']['tipo_segmento'] == 2, e lanes está ausente
+        self.assertIn('preenchidos', rel)
+        self.assertEqual(rel['preenchidos']['tipo_segmento'], 2)
+        self.assertNotIn('lanes', rel['preenchidos'])
 
 
 if __name__ == '__main__':

@@ -28,6 +28,7 @@ try:
         download_task,
         counts,
         calibration,
+        complemento,
     )
 except ImportError:
     import aon, ui_common
@@ -41,6 +42,7 @@ except ImportError:
         download_task,
         counts,
         calibration,
+        complemento,
     )
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -115,6 +117,15 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
             if hasattr(QgsMapLayerProxyModel, 'Filter')
             else QgsMapLayerProxyModel.LineLayer
         )
+        self.taComplCombo.setFilters(
+            QgsMapLayerProxyModel.Filter.VectorLayer
+            if hasattr(QgsMapLayerProxyModel, 'Filter')
+            else QgsMapLayerProxyModel.VectorLayer
+        )
+        self.taComplCombo.setAllowEmptyLayer(True)
+        self.taComplCombo.setLayer(None)
+        self.taComplCombo.layerChanged.connect(self._update_traffic_tab_state)
+        self.taComplCombo.currentIndexChanged.connect(self._update_traffic_tab_state)
         
         self.taOriginField.setFilters(QgsFieldProxyModel.Int)
         self.taDestField.setFilters(QgsFieldProxyModel.Int)
@@ -160,10 +171,39 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         """
         grid = self.taParamsGrid
         self._traffic_param_widgets = {}
-        for row, (key, spec) in enumerate(params.PARAMS.items()):
-            label = QtWidgets.QLabel(
+
+        headers = [
+            self.tr('Parameter'),
+            self.tr('Value where there is no data'),
+            self.tr('Fix'),
+            self.tr('Layer field'),
+        ]
+        for col, title in enumerate(headers):
+            hdr = QtWidgets.QLabel(title)
+            font = hdr.font()
+            font.setBold(True)
+            hdr.setFont(font)
+            hdr.setWordWrap(True)
+            grid.addWidget(hdr, 0, col)
+
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 0)
+        grid.setColumnStretch(3, 2)
+
+        for row, (key, spec) in enumerate(params.PARAMS.items(), start=1):
+            label_text = (
                 '{} ({})'.format(spec['rotulo'], spec['unidade'])
-                if spec['unidade'] else spec['rotulo'])
+                if spec['unidade'] else spec['rotulo']
+            )
+            label = QtWidgets.QLabel(label_text)
+            label.setWordWrap(True)
+            label.setToolTip(label_text)
+            label.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Preferred,
+            )
+
             if spec['tipo'] is bool:
                 editor = QtWidgets.QComboBox()
                 editor.addItems([self.tr('no'), self.tr('yes')])
@@ -179,24 +219,48 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 editor.setValue(float(spec['default']))
             else:
                 editor = QtWidgets.QLineEdit(str(spec['default']))
+
+            editor.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                editor.sizePolicy().verticalPolicy(),
+            )
+
+            fix_check = QtWidgets.QCheckBox()
+            fix_check.setChecked(False)
+            fix_check.setToolTip(self.tr('Fix'))
+            fix_check.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Fixed,
+                QtWidgets.QSizePolicy.Policy.Preferred,
+            )
+
             field_combo = QgsFieldComboBox()
             field_combo.setAllowEmptyFieldName(True)
+            field_combo.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                field_combo.sizePolicy().verticalPolicy(),
+            )
+            field_combo.setMinimumContentsLength(10)
+            field_combo.setSizeAdjustPolicy(
+                QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+
             grid.addWidget(label, row, 0)
             grid.addWidget(editor, row, 1)
-            grid.addWidget(QtWidgets.QLabel(self.tr('field:')), row, 2)
+            grid.addWidget(fix_check, row, 2)
             grid.addWidget(field_combo, row, 3)
-            self._traffic_param_widgets[key] = (editor, field_combo)
+            self._traffic_param_widgets[key] = (editor, fix_check, field_combo)
 
     def _traffic_overrides(self):
         """Read the parameter rows into the ``overrides`` dict of ``params.resolve``.
 
-        A parameter mapped to a layer field is left out of the overrides so the
-        official value read from the feature wins (D7 b/c); only the globally
-        typed values are returned, tagged 'usuario' by ``params.resolve``.
+        Only rows with ``Fix`` checked and no layer field mapped are returned,
+        tagged 'usuario' by ``params.resolve`` (D5).
         """
         overrides = {}
-        for key, (editor, field_combo) in getattr(
+        for key, (editor, fix_check, field_combo) in getattr(
                 self, '_traffic_param_widgets', {}).items():
+            if not fix_check.isChecked():
+                continue
             if field_combo.currentField():
                 continue
             spec = params.PARAMS[key]
@@ -208,6 +272,33 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 overrides[key] = editor.value()
         return overrides
 
+    def _traffic_defaults(self):
+        """Read non-fixed parameter rows whose editor differs from the catalogue default (D5).
+
+        Returned as ``{param_id: value}`` and passed to ``params.resolve`` as
+        ``defaults``, used only when the highway layer and the complementary
+        layer have no data for that parameter.
+        """
+        defaults = {}
+        for key, (editor, fix_check, field_combo) in getattr(
+                self, '_traffic_param_widgets', {}).items():
+            if fix_check.isChecked():
+                continue
+            spec = params.PARAMS[key]
+            if spec['tipo'] is bool:
+                val = bool(editor.currentIndex())
+                if val != bool(spec['default']):
+                    defaults[key] = val
+            elif isinstance(editor, QtWidgets.QLineEdit):
+                val = editor.text().strip()
+                if val != str(spec['default']).strip():
+                    defaults[key] = val
+            else:
+                val = editor.value()
+                if abs(val - spec['tipo'](spec['default'])) > 1e-6:
+                    defaults[key] = val
+        return defaults
+
     def _traffic_field_map(self):
         """Read the mapped field combos into the ``field_map`` of ``params.resolve`` (D2).
 
@@ -216,7 +307,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         """
         return {
             key: field_combo.currentField()
-            for key, (_editor, field_combo) in getattr(
+            for key, (_editor, _fix, field_combo) in getattr(
                 self, '_traffic_param_widgets', {}).items()
             if field_combo.currentField()
         }
@@ -229,7 +320,7 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         """Point the highway-layer field combos at the selected network layer."""
         layer = self.taNetworkCombo.currentLayer()
         self.taIdField.setLayer(layer)
-        for _editor, field_combo in getattr(
+        for _editor, _fix, field_combo in getattr(
                 self, '_traffic_param_widgets', {}).values():
             field_combo.setLayer(layer)
 
@@ -385,6 +476,9 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         centroids_crs=None,
         clip_buffer_m=None,
         field_map=None,
+        defaults=None,
+        compl_layer=None,
+        compl_max_dist_m=None,
     ):
         """Turn a highway layer into directed arcs plus a routable graph (steps 18-19).
 
@@ -435,6 +529,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 expanded by this many metres, instead of ``bbox``.
             field_map (dict | None): Parameter -> highway-layer field mapped in
                 the panel (D2), read by ``params.resolve`` before the candidates.
+            defaults (dict | None): Values where there is no data, per
+                parameter (D5).
 
         Returns:
             tuple: ``(graph, arcs, zone_node, unconnected)``. ``graph`` is None
@@ -443,6 +539,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 ``unconnected`` lists the zone ids left out.
         """
         self.traffic_anchors = {}
+        self.traffic_complementos = {}
+        if compl_layer is None and hasattr(self, 'taComplCombo'):
+            compl_layer = self.taComplCombo.currentLayer()
+        if compl_max_dist_m is None and hasattr(self, 'taComplMaxDist'):
+            compl_max_dist_m = self.taComplMaxDist.value()
         if fetch_gisbr or (road_layer is None and (bbox or uf)):
             try:
                 road_layer = gisbr_bridge.fetch_road_network(
@@ -562,9 +663,25 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         else:
             features = list(road_layer)
 
+        complementos = None
+        if compl_layer is not None:
+            max_dist = compl_max_dist_m if compl_max_dist_m is not None else 30.0
+            try:
+                complementos = complemento.atributos_por_proximidade(
+                    road_layer,
+                    compl_layer,
+                    max_dist_m=max_dist,
+                    transform_context=QgsProject.instance().transformContext(),
+                )
+                self.traffic_complementos = complementos or {}
+            except RuntimeError as err:
+                self._push_message(str(err), level='critical')
+                return None, [], {}, []
+
         arcs = network.build_network(
             features, overrides=overrides, precision=precision,
-            id_field=id_field, field_map=field_map) if features else []
+            id_field=id_field, field_map=field_map,
+            complementos=complementos, defaults=defaults) if features else []
 
         if not arcs:
             self._push_message(
@@ -710,11 +827,21 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
         return out_layer
 
     def _provenance_note(self, arcs):
-        """Translated 'official/default/user' summary plus the urban-arc warning."""
+        """Translated 'official/complementary/default/user' summary plus the urban-arc warning."""
         summary = outputs.provenance_summary(arcs)
         note = self.tr(
-            'parameters: {} official, {} default, {} set by the user').format(
-                summary['oficial'], summary['padrao'], summary['usuario'])
+            'parameters: {} official, {} complementary, {} default, {} set by the user').format(
+                summary['oficial'], summary.get('complementar', 0),
+                summary['padrao'], summary['usuario'])
+        compl_links = len({
+            getattr(a, 'link_id', None)
+            for a in (arcs or [])
+            if getattr(a, 'scope', None) != network.CONNECTOR_LINK_ID
+            and any(v == 'complementar' for v in (getattr(a, 'sources', None) or {}).values())
+            and getattr(a, 'link_id', None) is not None
+        })
+        if compl_links:
+            note += '; ' + self.tr('{} links with complementary data').format(compl_links)
         urban = outputs.urban_arc_count(arcs)
         if urban:
             note += '; ' + self.tr(
@@ -851,6 +978,13 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 self.tr('Stitching: {} node-to-node, {} T').format(no_no, t),
                 'Desire Lines', Qgis.MessageLevel.Info)
 
+        if relatorio.get('preenchidos'):
+            preenchidos = relatorio['preenchidos']
+            detalhes = ', '.join(f'{param} {n}' for param, n in preenchidos.items())
+            QgsMessageLog.logMessage(
+                self.tr('HCM fields filled from the official data: {}').format(detalhes),
+                'Desire Lines', Qgis.MessageLevel.Info)
+
         if relatorio.get('tempos_s'):
             tempos = relatorio['tempos_s']
             dl = tempos.get('download')
@@ -885,8 +1019,11 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 road_layer=road_layer,
                 overrides=self._traffic_overrides(),
                 field_map=self._traffic_field_map(),
+                defaults=self._traffic_defaults(),
                 id_field=self.taIdField.currentField() or None,
                 crs=road_layer.crs() if road_layer is not None else None,
+                compl_layer=self.taComplCombo.currentLayer(),
+                compl_max_dist_m=self.taComplMaxDist.value(),
             )
             if not arcs:
                 return
@@ -895,7 +1032,8 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 self.traffic_crs, 'capacidade_hcm')
         finally:
             QApplication.restoreOverrideCursor()
-            iface.messageBar().popWidget(progress)
+            if iface is not None and iface.messageBar() is not None:
+                iface.messageBar().popWidget(progress)
 
         self._push_message(
             self.tr('Capacity computed for {} directed arcs — {}').format(
@@ -939,12 +1077,15 @@ class TrafficAssignmentPanel(ui_common.PluginUiMixin, QgsDockWidget, FORM_CLASS)
                 zone_keys=zone_keys,
                 overrides=self._traffic_overrides(),
                 field_map=self._traffic_field_map(),
+                defaults=self._traffic_defaults(),
                 max_dist_m=max_dist_m,
                 id_field=self.taIdField.currentField() or None,
                 crs=(road_layer.crs() if road_layer is not None
                      else cent_layer.crs()),
                 centroids_crs=cent_layer.crs(),
                 clip_buffer_m=clip_buffer_m,
+                compl_layer=self.taComplCombo.currentLayer(),
+                compl_max_dist_m=self.taComplMaxDist.value(),
             )
             if g is None or not zone_node:
                 return

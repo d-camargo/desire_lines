@@ -27,6 +27,7 @@ from desire_lines.traffic.outputs import (
     apply_vc_style,
     calibration_to_layer,
     apply_geh_style,
+    provenance_summary,
 )
 
 
@@ -103,6 +104,19 @@ class TestOutputsModule(unittest.TestCase):
         self.assertEqual(f2['volume'], 0.0)
         self.assertAlmostEqual(f2['vc'], 0.0)
         self.assertEqual(f2['los'], 'A')
+
+    def test_complementar_contado_e_gravado_em_src(self):
+        """Origem 'complementar' entra no resumo e nos campos src_* (D4)."""
+        self.arc1.sources = {'lanes': 'complementar', 'vel_livre': 'complementar',
+                             'terreno': 'oficial'}
+        self.arc2.sources = {'lanes': 'usuario', 'terreno': 'padrao'}
+        resumo = provenance_summary(self.arcs)
+        self.assertEqual(resumo, {'oficial': 1, 'complementar': 2, 'padrao': 1, 'usuario': 1})
+        layer = flows_to_layer(self.arcs, [0.0, 0.0], stats={'metodo': 'aon'}, crs=self.crs)
+        f1, f2 = list(layer.getFeatures())
+        self.assertEqual(f1['src_lanes'], 'complementar')
+        self.assertEqual(f1['src_vel_livre'], 'complementar')
+        self.assertEqual(f2['src_lanes'], 'usuario')
 
     def test_flows_to_layer_msa(self):
         """Testa criação de camada para alocação MSA."""

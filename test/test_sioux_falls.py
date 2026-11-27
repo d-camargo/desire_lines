@@ -384,7 +384,7 @@ class TestSiouxFallsFixture(unittest.TestCase):
             ('tempo_livre', 'free_flow_time'),
             ('mao_unica', 'oneway'),
         ]:
-            _editor, combo = panel._traffic_param_widgets[key]
+            _editor, _fix, combo = panel._traffic_param_widgets[key]
             combo.setLayer(layer)
             combo.setField(field_name)
 

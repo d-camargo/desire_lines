@@ -19,6 +19,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QFont
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QDialog, QScrollArea, QApplication
 
 from desire_lines.traffic_panel import TrafficAssignmentPanel
@@ -43,9 +44,11 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         """Runs before each test."""
         self.dialog = TrafficAssignmentPanel(None)
     def test_params_rows_cover_the_catalogue(self):
-        """Every D7 parameter gets a global editor and a field-override combo."""
+        """Every D7 parameter gets a global editor, a fix checkbox and a field-override combo (D5)."""
         widgets = self.dialog._traffic_param_widgets
         self.assertEqual(set(widgets), set(traffic_params.PARAMS))
+        for key, triple in widgets.items():
+            self.assertEqual(len(triple), 3)
 
     def test_all_tab_pages_are_resizable_scroll_areas(self):
         """All 4 pages of taTabs are (or contain) a QScrollArea with widgetResizable (D4)."""
@@ -108,11 +111,71 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
 
         last_param_key = list(traffic_params.PARAMS)[-1]
         self.assertIn(last_param_key, self.dialog._traffic_param_widgets)
-        editor, field_combo = self.dialog._traffic_param_widgets[last_param_key]
+        editor, fix_check, field_combo = self.dialog._traffic_param_widgets[last_param_key]
         self.assertIsNotNone(editor)
+        self.assertIsNotNone(fix_check)
         self.assertIsNotNone(field_combo)
 
         self.assertGreater(scroll.verticalScrollBar().maximum(), 0)
+
+    def test_hcm_params_grid_lanes_combo_ratio_at_900px(self):
+        """(a) em 900 px, o combo de lanes tem >= 25% de taParamsGroup."""
+        self.dialog.resize(900, 600)
+        self.dialog.taTabs.setCurrentIndex(1)
+        self.dialog.show()
+        QApplication.processEvents()
+        _editor, _fix, combo_lanes = self.dialog._traffic_param_widgets['lanes']
+        gw = self.dialog.taParamsGroup.width()
+        cw = combo_lanes.width()
+        self.assertGreaterEqual(cw / gw, 0.25)
+
+    def test_hcm_params_grid_combo_expands_at_1400px(self):
+        """(b) o combo e mais largo em 1400 px que em 900 px."""
+        self.dialog.resize(900, 600)
+        self.dialog.taTabs.setCurrentIndex(1)
+        self.dialog.show()
+        QApplication.processEvents()
+        _editor, _fix, combo_lanes = self.dialog._traffic_param_widgets['lanes']
+        width_900 = combo_lanes.width()
+
+        self.dialog.resize(1400, 600)
+        self.dialog.taTabs.setCurrentIndex(1)
+        self.dialog.show()
+        QApplication.processEvents()
+        self.assertGreater(combo_lanes.width(), width_900)
+
+    def test_hcm_params_grid_fits_viewport_at_450px(self):
+        """(c) em 450 px, taParamsGroup.width() <= tabParamsScroll.viewport().width()"""
+        if self.dialog.font().pointSize() > 10:
+            self.dialog.setFont(QFont(self.dialog.font().family(), 9))
+        self.dialog.resize(450, 600)
+        self.dialog.taTabs.setCurrentIndex(1)
+        self.dialog.show()
+        QApplication.processEvents()
+        self.assertLessEqual(
+            self.dialog.taParamsGroup.width(),
+            self.dialog.tabParamsScroll.viewport().width()
+        )
+
+    def test_hcm_params_grid_headers_row_0(self):
+        """(d) a linha 0 tem os 4 cabeçalhos (D5)."""
+        self.dialog.taTabs.setCurrentIndex(1)
+        self.dialog.show()
+        QApplication.processEvents()
+        grid = self.dialog.taParamsGrid
+        expected = [
+            self.dialog.tr('Parameter'),
+            self.dialog.tr('Value where there is no data'),
+            self.dialog.tr('Fix'),
+            self.dialog.tr('Layer field'),
+        ]
+        for col, title in enumerate(expected):
+            item = grid.itemAtPosition(0, col)
+            self.assertIsNotNone(item)
+            widget = item.widget()
+            self.assertIsNotNone(widget)
+            self.assertEqual(widget.text(), title)
+            self.assertTrue(widget.font().bold())
 
     def test_buttons_start_disabled(self):
         """With no layer selected neither action is available (step 17)."""
@@ -499,14 +562,23 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
 
     @patch('desire_lines.traffic_panel.gisbr_bridge.fontes_rodoviarias')
     def test_run_download_selects_layer_and_marks_from_layer(self, mock_fontes):
-        """run_download -> task.run -> concluida loads the GPKG table, selects it and marks taNetFromLayer (D1)."""
+        """run_download -> task.run -> concluida loads the GPKG table, selects it and marks taNetFromLayer (D1, D3)."""
         import os
         import tempfile
+        from desire_lines.traffic import oficiais
+        from desire_lines.traffic.outputs import _create_field
+
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         out_path = os.path.join(tmp.name, 'out.gpkg')
         self.dialog.taOutputFile.setFilePath(out_path)
         layer = self._line_layer('EPSG:31983', self.GEO_LINES)
+        _tipo_qgis = {'Integer': 'int', 'Integer64': 'int64', 'Real': 'double'}
+        layer.dataProvider().addAttributes([
+            _create_field(n, _tipo_qgis.get(t, 'string'))
+            for n, t in oficiais.ESQUEMA_PADRONIZADO.items()
+        ])
+        layer.updateFields()
 
         task, _enabled = self._run_download_to_task(mock_fontes, [
             {'id': 'dnit_snv', 'nome': 'Malha DNIT'},
@@ -526,6 +598,9 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertEqual(task.uri, out_path + '|layername=malha_gisbr_mg')
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].featureCount(), 2)
+        # (d) o GPKG gravado por download_task reabre com o mesmo esquema
+        names = [n for n in loaded[0].fields().names() if n != 'fid']
+        self.assertEqual(names, list(oficiais.ESQUEMA_PADRONIZADO.keys()))
         self.assertIs(self.dialog.taNetworkCombo.currentLayer(), loaded[0])
         self.assertTrue(self.dialog.taNetFromLayer.isChecked())
         self.assertFalse(self.dialog.taNetFromGisbr.isChecked())
@@ -949,7 +1024,7 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         layer.dataProvider().addFeatures([feat])
         layer.updateExtents()
 
-        _editor, field_combo = self.dialog._traffic_param_widgets['capacidade']
+        _editor, _fix, field_combo = self.dialog._traffic_param_widgets['capacidade']
         field_combo.setLayer(layer)
         field_combo.setField('cap_x')
         self.assertEqual(self.dialog._traffic_field_map(), {'capacidade': 'cap_x'})
@@ -1066,6 +1141,23 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
         self.assertIn('stitch 0.4s', logged[2])
         self.assertIn('layer 0.2s', logged[2])
         self.assertIn('total 2.9s', logged[2])
+
+    @patch('desire_lines.traffic_panel.QgsMessageLog.logMessage')
+    def test_report_download_with_preenchidos_logs_hcm_fields(self, mock_log):
+        """(e) _report_download com preenchidos loga a linha nova."""
+        relatorio = {
+            'feicoes': 10,
+            'fontes': [
+                {'id': 'dnit_snv', 'nome': 'Malha DNIT', 'removidas_inteiras': 0,
+                 'aparadas': 0, 'linhas': 10, 'baixadas': 10,
+                 'fora_do_recorte': 0, 'metros_removidos': 0.0},
+            ],
+            'costura': {'no_no': 0, 't': 0, 'costuradas': 0},
+            'preenchidos': {'tipo_segmento': 10, 'pavimentado': 10, 'urbano': 3},
+        }
+        self.dialog._report_download(relatorio, 'malha_gisbr_sp')
+        logged = [call[0][0] for call in mock_log.call_args_list]
+        self.assertTrue(any('HCM fields filled from the official data: tipo_segmento 10, pavimentado 10, urbano 3' in msg for msg in logged))
 
     def test_report_download_sums_counts_across_sources(self):
         """removidas_inteiras and aparadas are summed across all sources in the message bar (D5)."""
@@ -1285,6 +1377,256 @@ class TrafficAssignmentPanelTest(unittest.TestCase):
 
         self.assertEqual(len(published_layers), 1)
         self.assertEqual(self.dialog.taCalibAssignCombo.currentLayer(), published_layers[0])
+
+    def test_d5_regression_bug_standard_schema_untouched_panel_is_official(self):
+        """(a) regressão do bug: camada com esquema padronizado e tipo_segmento='pista_dupla', painel intocado -> oficial (D5)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        from desire_lines.traffic import oficiais
+        _tipo_qgis = {'Integer': 'int', 'Integer64': 'int64', 'Real': 'double'}
+        fields_def = '&'.join(
+            f'field={n}:{_tipo_qgis.get(t, "string")}'
+            for n, t in oficiais.ESQUEMA_PADRONIZADO.items()
+        )
+        layer = QgsVectorLayer(f'LineString?crs=EPSG:31983&{fields_def}', 'roads', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(100.0, 0.0)]))
+        feat.setAttribute('tipo_segmento', 'pista_dupla')
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=layer,
+            overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map(),
+            defaults=self.dialog._traffic_defaults(),
+        )
+        self.assertTrue(len(arcs) > 0)
+        for arc in arcs:
+            self.assertEqual(arc.params['tipo_segmento'], 'pista_dupla')
+            self.assertEqual(arc.sources['tipo_segmento'], 'oficial')
+
+    def test_d5_regression_bug_raw_tipopista_dup_untouched_panel_is_official(self):
+        """(b) idem com o campo bruto TipoPista='DUP' -> oficial (D5)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        layer = QgsVectorLayer('LineString?crs=EPSG:31983&field=TipoPista:string', 'roads', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(100.0, 0.0)]))
+        feat.setAttribute('TipoPista', 'DUP')
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=layer,
+            overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map(),
+            defaults=self.dialog._traffic_defaults(),
+        )
+        self.assertTrue(len(arcs) > 0)
+        for arc in arcs:
+            self.assertEqual(arc.params['tipo_segmento'], 'pista_dupla')
+            self.assertEqual(arc.sources['tipo_segmento'], 'oficial')
+
+    def test_d5_fix_checkbox_wins_over_data_and_is_user(self):
+        """(c) Fix em '2_faixas' vence o dado e é marcado 'usuario' (D5)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+        layer = QgsVectorLayer('LineString?crs=EPSG:31983&field=tipo_segmento:string', 'roads', 'memory')
+        feat = QgsFeature(layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(100.0, 0.0)]))
+        feat.setAttribute('tipo_segmento', 'pista_dupla')
+        layer.dataProvider().addFeatures([feat])
+        layer.updateExtents()
+
+        editor, fix_check, _combo = self.dialog._traffic_param_widgets['tipo_segmento']
+        editor.setText('2_faixas')
+        fix_check.setChecked(True)
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=layer,
+            overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map(),
+            defaults=self.dialog._traffic_defaults(),
+        )
+        self.assertTrue(len(arcs) > 0)
+        for arc in arcs:
+            self.assertEqual(arc.params['tipo_segmento'], '2_faixas')
+            self.assertEqual(arc.sources['tipo_segmento'], 'usuario')
+
+    def test_d5_defaults_without_fix_goes_to_defaults_not_overrides(self):
+        """(d) pct_veic_pesados=35 sem Fix vai para defaults e não para overrides (D5)."""
+        editor, fix_check, _combo = self.dialog._traffic_param_widgets['pct_veic_pesados']
+        editor.setValue(35.0)
+        self.assertFalse(fix_check.isChecked())
+
+        overrides = self.dialog._traffic_overrides()
+        defaults = self.dialog._traffic_defaults()
+
+        self.assertNotIn('pct_veic_pesados', overrides)
+        self.assertIn('pct_veic_pesados', defaults)
+        self.assertEqual(defaults['pct_veic_pesados'], 35.0)
+
+    def test_d5_editor_at_default_value_in_neither_overrides_nor_defaults(self):
+        """(e) editor no padrão não aparece em nenhum dos dois (D5)."""
+        overrides = self.dialog._traffic_overrides()
+        defaults = self.dialog._traffic_defaults()
+        self.assertEqual(overrides, {})
+        self.assertEqual(defaults, {})
+
+        _editor, fix_check, _combo = self.dialog._traffic_param_widgets['pct_veic_pesados']
+        self.assertFalse(fix_check.isChecked())
+        self.assertNotIn('pct_veic_pesados', overrides)
+        self.assertNotIn('pct_veic_pesados', defaults)
+
+    def test_d5_provenance_note_shows_four_origins(self):
+        """_provenance_note exibe oficial, complementar, padrão e usuário (D5)."""
+        from desire_lines.traffic.network import Arc
+        arc = Arc((1, 'fw'), 1, (0, 0), (1, 0), 100.0, 1.0, 1000.0, 'rodoviario', {},
+                  {'lanes': 'oficial', 'vel_livre': 'complementar',
+                   'terreno': 'padrao', 'pct_veic_pesados': 'usuario'},
+                  [(0, 0), (1, 0)])
+        note = self.dialog._provenance_note([arc])
+        self.assertIn('1 official', note)
+        self.assertIn('1 complementary', note)
+        self.assertIn('1 default', note)
+        self.assertIn('1 set by the user', note)
+
+    # --- D6: complementary layer in capacity tab (step 7) ------------------
+
+    def test_d6_compl_group_tab_placement(self):
+        """(c) taComplGroup fica na página do índice 1 do taTabs (D6)."""
+        tabs = self.dialog.taTabs
+        self.assertEqual(tabs.count(), 4)
+        capacity_page = tabs.widget(1)
+        self.assertTrue(capacity_page.isAncestorOf(self.dialog.taComplGroup))
+
+        for idx in (0, 2, 3):
+            self.assertFalse(tabs.widget(idx).isAncestorOf(self.dialog.taComplGroup))
+
+        self.assertTrue(self.dialog.taComplCombo.allowEmptyLayer())
+        self.assertIsNone(self.dialog.taComplCombo.currentLayer())
+        self.assertEqual(self.dialog.taComplMaxDist.value(), 30.0)
+        self.assertEqual(self.dialog.taComplMaxDist.minimum(), 0.0)
+        self.assertEqual(self.dialog.taComplMaxDist.maximum(), 1000.0)
+        self.assertEqual(self.dialog.taComplMaxDist.suffix(), ' m')
+
+    def test_d6_standardized_dup_with_memory_osm_complementar(self):
+        """(a) malha padronizada DUP + OSM de memória com lanes=3, oneway=yes -> capacidade_hcm com src_lanes='complementar' e capacidade maior que com 2 faixas (D6)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer, QgsProject
+        from desire_lines.traffic import hcm, outputs
+
+        road_layer = QgsVectorLayer('LineString?crs=EPSG:31983&field=id:int&field=TipoPista:string', 'roads', 'memory')
+        feat = QgsFeature(road_layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([
+            QgsPointXY(500000.0, 7400000.0),
+            QgsPointXY(501000.0, 7400000.0),
+        ]))
+        feat['id'] = 1
+        feat.setAttribute('TipoPista', 'DUP')
+        road_layer.dataProvider().addFeatures([feat])
+        road_layer.updateExtents()
+
+        osm_layer = QgsVectorLayer('LineString?crs=EPSG:31983&field=lanes:int&field=oneway:string', 'compl_osm', 'memory')
+        feat_osm = QgsFeature(osm_layer.fields())
+        feat_osm.setGeometry(QgsGeometry.fromPolylineXY([
+            QgsPointXY(500000.0, 7400010.0),
+            QgsPointXY(501000.0, 7400010.0),
+        ]))
+        feat_osm['lanes'] = 3
+        feat_osm['oneway'] = 'yes'
+        osm_layer.dataProvider().addFeatures([feat_osm])
+        osm_layer.updateExtents()
+
+        project = QgsProject.instance()
+        project.addMapLayers([road_layer, osm_layer])
+        self.addCleanup(lambda: project.removeMapLayers([road_layer.id(), osm_layer.id()]))
+
+        self.dialog.taNetworkCombo.setLayer(road_layer)
+        self.dialog.taComplCombo.setLayer(osm_layer)
+
+        cap_2_faixas, _ = hcm.segment_capacity({'tipo_segmento': 'pista_dupla', 'lanes': 2})
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=road_layer,
+            overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map(),
+            defaults=self.dialog._traffic_defaults(),
+        )
+        self.assertEqual(len(arcs), 1)
+        arc = arcs[0]
+        self.assertEqual(arc.sources['lanes'], 'complementar')
+        self.assertEqual(arc.params['lanes'], 3)
+        self.assertGreater(arc.capacity, cap_2_faixas)
+
+        cap_layer = outputs.flows_to_layer(
+            arcs, [0.0] * len(arcs), stats={'metodo': 'capacidade'},
+            crs=road_layer.crs(), layer_name='capacidade_hcm',
+        )
+        f = next(cap_layer.getFeatures())
+        self.assertEqual(f['src_lanes'], 'complementar')
+        self.assertGreater(f['capacidade'], cap_2_faixas)
+
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_capacity()
+        self.assertEqual(self.dialog.last_message[0], 'success')
+        self.assertIn('1 links with complementary data', self.dialog.last_message[1])
+
+    def test_d6_empty_combo_matches_step_5(self):
+        """(b) combo vazio -> igual ao passo 5 (D6)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer, QgsProject
+
+        road_layer = QgsVectorLayer('LineString?crs=EPSG:31983&field=id:int&field=TipoPista:string', 'roads', 'memory')
+        feat = QgsFeature(road_layer.fields())
+        feat.setGeometry(QgsGeometry.fromPolylineXY([
+            QgsPointXY(500000.0, 7400000.0),
+            QgsPointXY(501000.0, 7400000.0),
+        ]))
+        feat['id'] = 1
+        feat.setAttribute('TipoPista', 'DUP')
+        road_layer.dataProvider().addFeatures([feat])
+        road_layer.updateExtents()
+
+        project = QgsProject.instance()
+        project.addMapLayers([road_layer])
+        self.addCleanup(lambda: project.removeMapLayers([road_layer.id()]))
+
+        self.dialog.taNetworkCombo.setLayer(road_layer)
+        self.dialog.taComplCombo.setLayer(None)
+
+        _g, arcs, _zn, _unc = self.dialog.build_traffic_network(
+            road_layer=road_layer,
+            overrides=self.dialog._traffic_overrides(),
+            field_map=self.dialog._traffic_field_map(),
+            defaults=self.dialog._traffic_defaults(),
+        )
+        self.assertTrue(len(arcs) > 0)
+        for arc in arcs:
+            self.assertEqual(arc.params['tipo_segmento'], 'pista_dupla')
+            self.assertEqual(arc.sources['tipo_segmento'], 'oficial')
+            self.assertEqual(arc.sources['lanes'], 'padrao')
+            self.assertEqual(arc.params['lanes'], 2)
+
+        mock_iface = MagicMock()
+        with patch('desire_lines.traffic_panel.iface', mock_iface), \
+             patch('desire_lines.ui_common.iface', mock_iface):
+            self.dialog.run_capacity()
+        self.assertEqual(self.dialog.last_message[0], 'success')
+        self.assertNotIn('links with complementary data', self.dialog.last_message[1])
+
+    def test_d6_runtime_error_becomes_critical_message(self):
+        """RuntimeError do cruzamento espacial vira critical, sem except mudo (D6)."""
+        from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsVectorLayer
+
+        road_layer = QgsVectorLayer('LineString?crs=EPSG:4326&field=id:int', 'roads_geo', 'memory')
+        compl_layer = QgsVectorLayer('LineString?crs=EPSG:4326&field=lanes:int', 'compl', 'memory')
+
+        with patch('desire_lines.aon.pick_metric_crs', return_value=(None, None)):
+            res = self.dialog.build_traffic_network(
+                road_layer=road_layer,
+                compl_layer=compl_layer,
+            )
+        self.assertEqual(res, (None, [], {}, []))
+        self.assertEqual(self.dialog.last_message[0], 'critical')
 
 
 if __name__ == "__main__":

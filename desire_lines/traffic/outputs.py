@@ -69,11 +69,11 @@ def provenance_summary(arcs):
         arcs (list): Arcos de `network.build_network`.
 
     Returns:
-        dict: {'oficial': n, 'padrao': n, 'usuario': n} — número de
-            (arco, parâmetro) resolvidos por cada origem. Conectores de
-            centróide, que não têm parâmetros HCM, ficam de fora.
+        dict: {'oficial': n, 'complementar': n, 'padrao': n, 'usuario': n} —
+            número de (arco, parâmetro) resolvidos por cada origem. Conectores
+            de centróide, que não têm parâmetros HCM, ficam de fora.
     """
-    resumo = {'oficial': 0, 'padrao': 0, 'usuario': 0}
+    resumo = {'oficial': 0, 'complementar': 0, 'padrao': 0, 'usuario': 0}
     for arc in arcs or []:
         for origem in (getattr(arc, 'sources', None) or {}).values():
             if origem in resumo:

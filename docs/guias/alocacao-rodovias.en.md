@@ -140,14 +140,27 @@ plugin shows a warning and proceeds with the full network.
 The **Capacity** tab gathers the operational and geometric settings for the
 HCM capacity computation and network parameters.
 
-The *HCM parameters (default, or override globally / by field)* group has
-one row per parameter for the 18 parameters of the system (segment type,
-lanes, terrain, % heavy vehicles, FFS, PHF, lane and shoulder width,
-no-passing zones, access density, directional split, BPR alpha and beta,
-given capacity, free-flow time and one-way).
+The *HCM parameters (default, or override globally / by field)* group presents the parameter table for the 18 operational parameters of the system (segment type, lanes, terrain, % heavy vehicles, FFS, PHF, lane and shoulder width, no-passing zones, access density, directional split, BPR alpha and beta, given capacity, free-flow time, and one-way).
 
-Each row offers **two inputs**: a global value typed into the control and a
-*field:* combobox to map any column of the highway layer.
+Each row in the table provides four columns:
+
+| Column | Description |
+|---|---|
+| **Parameter** | Name of the operational or geometric HCM parameter. |
+| **Value where there is no data** | Value used when neither the road feature nor the complementary layer provide data (step 6 of the cascade). If modified by the user from catalogue defaults, it is recorded with **`usuario`** provenance. |
+| **Fix** | Checkbox (`QCheckBox`) that, when ticked (with no layer field mapped), forces the entered value across the entire road network (step 1 of the cascade). This value takes precedence over layer attributes and complementary layers, recorded with **`usuario`** provenance. |
+| **Layer field** | Combobox allowing you to map any column from the road layer directly to the parameter (step 2 of the cascade). Values successfully read receive **`oficial`** provenance. |
+
+When you use the *Download via GisBR (official SNV/DER network)* option on the Network tab, the downloaded network (`malha_gisbr_<uf>`) already arrives standardized with the 21-column schema in technical HCM vocabulary (Decisions D2 and D3). As a result, the plugin automatically recognizes and reads official attributes directly from the layer without requiring any manual field mapping.
+
+### Complementary data (optional) group
+
+Located directly below the parameter table, the **Complementary data (optional)** group allows enriching the road network with data from secondary sources (Decisions D4 and D6):
+
+* **Complementary layer**: Combobox accepting any additional vector layer loaded in the QGIS project (lines such as OSM centerlines or `osm_links_rm<id>`, points such as count stations with heavy vehicle %, or polygons such as IBGE urbanized areas). Leave empty if you only want to work with data from the road network.
+* **Max. distance**: Search radius in metres (default **30 m**). The plugin evaluates the geometric midpoint of each road link and finds the nearest complementary feature within the configured distance (measured in the metric CRS of the network).
+
+Attributes from the matched feature undergo automatic translation (`oficiais.traduz`) and candidate lookup, and the inherited parameters receive **`complementar`** provenance (step 5 of the resolution cascade).
 
 ### Special network parameters and the `0` sentinel
 
@@ -159,23 +172,23 @@ Sioux Falls):
 * **Free-flow time (0 = length ÷ FFS)** (`tempo_livre`): Free-flow time in minutes. The **`0`** sentinel computes the time from the geometric length and the free-flow speed (`comprimento ÷ vel_livre`). Any value **`> 0`** overrides the computed time.
 * **One-way (direction of the geometry)** (`mao_unica`): Boolean. If true (`True`, `1`, `'sim'`, `'yes'`), generates only the arc in the direction of the geometry (`fw`), omitting the reverse (`bw`). If false (`False`), generates both directed arcs (`fw` and `bw`).
 
-### Precedence and field mapping (Decision D2)
+### Precedence and Resolution Cascade (Decisions D4 and D7)
 
-When you select a column in the *field:* combo of any parameter, that mapping
-is passed straight to the resolution (`field_map`). The value found in the
-mapped column is adopted with **`oficial`** provenance.
-
-The strict order of precedence per feature and per parameter is:
+Parameter resolution occurs in two passes through a strict 8-step cascade implemented in `params.resolve()`. The first step that supplies a valid value wins:
 
 | Precedence | Source | Recorded as |
 |---|---|---|
-| 1st | Global value typed in the tab (if different from the 0 sentinel for capacity/free-flow time) | `usuario` |
-| 2nd | Column of the selected layer in that row's *field:* combo | `oficial` |
-| 3rd | Columns with standard candidate names present in the feature | `oficial` |
-| 4th | Default from the plugin's factory catalogue | `padrao` |
+| 1st | Parameter fixed in the UI by ticking **Fix** (without a layer field mapped) | `usuario` |
+| 2nd | Column of the road layer selected in the **Layer field** column | `oficial` |
+| 3rd | Automatic translation of attributes from recognized official sources (`oficiais.traduz`) | `oficial` |
+| 4th | Standard candidate column names present on the feature (including the standardized network schema) | `oficial` |
+| 5th | Nearest feature from the **Complementary layer** within the configured maximum distance | `complementar` |
+| 6th | Value entered in the **Value where there is no data** column | `usuario` |
+| 7th | Default by road class (`PADRAO_POR_CLASSE`: multilane, two-lane paved, or unpaved) | `padrao` |
+| 8th | Residual factory default from the plugin's catalogue (`PARAMS`) | `padrao` |
 
 !!! note "Provenance goes to the output layer"
-    Each arc carries a `src_<parameter>` field with `oficial`, `usuario` or
+    Each arc carries a `src_<parameter>` field with `oficial`, `complementar`, `usuario` or
     `padrao`, and the final message summarises how many (arc, parameter) pairs
     came from each source. It is what separates "capacity computed with the
     dataset's data" from "capacity computed with the factory default" — see
@@ -320,7 +333,7 @@ The arc layers are styled by **`vc`** in fixed classes from A to F (green up to
 | `los` | **Approximate** level of service, derived from `vc` (the official HCM LOS uses density/average travel speed) |
 | `tempo_h`, `atraso_h` | Travel time on the arc and delay over free flow |
 | `metodo`, `escopo` | Method used (`fw`/`msa`/`aon`/`capacidade`) and `rodoviario` or `urbano` |
-| `src_*` | Provenance of each parameter (including `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` or `padrao` |
+| `src_*` | Provenance of each parameter (including `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `complementar`, `usuario` or `padrao` |
 
 The success message at the end of assignment summarizes pairs assigned,
 number of arcs, provenance, count of urban arcs, gap, matrix rows with

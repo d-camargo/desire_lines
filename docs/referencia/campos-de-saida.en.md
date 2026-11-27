@@ -39,7 +39,62 @@ The **Synthetic AoN Assignment on a Delaunay network** layer contains the line s
 
 ---
 
-## 3. HCM Capacity Layer (Tab 4 — Pre-assignment)
+## 3. Network Downloaded from GisBR (Tab 4 — malha_gisbr_<uf>)
+
+Generated upon running the **Download network** command on the Network tab of the highway panel. The network merges the selected official sources (such as DNIT and state DERs), handling duplicate removal, overlap trimming, and topological stitching.
+
+Starting with version 0.10.0 (Decisions D2 and D3), this layer is saved with a **standardized 21-column schema** in technical HCM vocabulary, identical across all Brazilian states (UFs).
+
+* **Default layer / table name:** `malha_gisbr_<uf>` (e.g. `malha_gisbr_sp`, `malha_gisbr_mg`), saved in the shared output GeoPackage.
+* **Geometry Type:** Line (`LineString`).
+* **Responsible Modules:** `traffic/malha_gisbr.py` and `traffic/oficiais.py`.
+
+### Specification of the 21 Standard Columns
+
+| Field | Type | Unit | Description |
+|---|---|---|---|
+| `fonte` | Text (`String`) | - | Source database identifier in GisBR (e.g. `dnit_snv`, `der_sp_rodovias`). |
+| `ajuste` | Text (`String`) | - | Geometric merge processing status: empty (intact original), `aparada` (overlap trimmed), `costurada` (snapped end), or `aparada+costurada`. |
+| `rodovia` | Text (`String`) | - | Highway code or designation (e.g. `BR-116`, `SP 095`). |
+| `codigo_trecho` | Text (`String`) | - | Unique segment/sub-segment identifier in the official inventory. |
+| `km_ini` | Decimal (`Real`) | km | Start kilometre of the highway segment in official chainage. |
+| `km_fim` | Decimal (`Real`) | km | End kilometre of the highway segment in official chainage. |
+| `administracao` | Text (`String`) | - | Administrative authority / concession status (e.g. state, federal, concessionaire). |
+| `tipo_segmento` | Text (`String`) | - | HCM segment typology: `pista_dupla`, `2_faixas`, etc. |
+| `lanes` | Integer (`Integer`) | lanes | Number of travel lanes per direction. |
+| `pavimentado` | Integer (`Integer`) | 0/1 | Pavement flag: `1` for paved, `0` for unpaved. |
+| `urbano` | Integer (`Integer`) | 0/1 | Urban crossing flag: `1` for urban crossing, `0` for rural/intercity. |
+| `largura_faixa` | Decimal (`Real`) | m | Average travel lane width in metres. |
+| `largura_acostamento` | Decimal (`Real`) | m | Average shoulder width in metres. |
+| `terreno` | Text (`String`) | - | Terrain classification (`plano`, `ondulado`, `montanhoso`). |
+| `pct_veic_pesados` | Decimal (`Real`) | % | Percentage of heavy vehicles (trucks and buses). |
+| `vel_livre` | Decimal (`Real`) | km/h | Free-flow speed (*Free-Flow Speed* - FFS). |
+| `phf` | Decimal (`Real`) | - | Peak Hour Factor (*Peak Hour Factor*). |
+| `pct_no_passing` | Decimal (`Real`) | % | Percentage of length with no-passing markings. |
+| `access_density` | Decimal (`Real`) | accesses/km | Access density per kilometre. |
+| `directional_split` | Decimal (`Real`) | % | Directional split of traffic. |
+| `mao_unica` | Integer (`Integer`) | 0/1 | Traffic directionality: `1` for one-way in geometry direction, `0` for two-way. |
+
+### Official Identification Mapping Table (D2c)
+
+For each supported official source, `traffic/oficiais.py` translates agency-specific fields into the standardized identification columns:
+
+| Standard field | Type | DNIT (`dnit_snv`) | DER-SP (`der_sp_rodovias`) |
+|---|---|---|---|
+| `rodovia` | String | `Codigo_BR` | `Rodovia` |
+| `codigo_trecho` | String | `Codigo_SNV` | `Subtrecho` |
+| `km_ini` | Real | `Quilometragem_Inicio` | `KmInicial` |
+| `km_fim` | Real | `Quilometragem_Fim` | `KmFinal` |
+| `administracao` | String | `Administracao` | `Administra` |
+
+State sources without pre-configured cadastral mapping leave identification columns as null (`NULL`), while operational capacity translation rules remain fully active.
+
+!!! warning "Raw agency attributes are not included in the standardized layer"
+    Raw attributes specific to individual sources (which previously generated dozens of sparse, unaligned columns) **are no longer present** in the downloaded layer. Full traceability and linkage back to the agency's official dataset are guaranteed through the composite key: **`fonte` + `codigo_trecho` + `km_ini` / `km_fim`**.
+
+---
+
+## 4. HCM Capacity Layer (Tab 4 — Pre-assignment)
 
 Generated when you run the **Compute capacity** command on the Capacity tab of the highway panel. It contains the processed and simplified road network with capacities computed according to the HCM 6th Edition procedures (Chapters 12 and 15), before any demand is assigned to it.
 
@@ -58,7 +113,7 @@ It has exactly the same fields as described in the section below (Assignment on 
 
 ---
 
-## 4. Assignment on Real Highways Layer (Tab 4 — AoN / MSA / FW)
+## 5. Assignment on Real Highways Layer (Tab 4 — AoN / MSA / FW)
 
 Generated after running the assignment of the OD matrix demand onto the real highway network (SNV/DER) with the **Assign** command.
 
@@ -91,11 +146,12 @@ Generated after running the assignment of the OD matrix demand onto the real hig
 
 To meet the principle of full data transparency (**Rule D7 — "Nothing is assumed silently"**), the output layer includes 18 additional fields indicating the exact provenance of each operational and capacity parameter used in the calculation.
 
-The `src_*` fields can take one of three possible values:
+The `src_*` fields can take one of four possible values:
 
-* **`oficial`**: The parameter was read directly from an attribute that exists in the input highway layer (through field mapping in the UI or a candidate-name lookup).
-* **`usuario`**: The parameter was entered or overridden manually by the user in the plugin interface.
-* **`padrao`**: The parameter was not in the input layer and the plugin applied the default value aligned with DNIT/HCM guidelines.
+* **`oficial`**: The parameter was read directly from an attribute that exists in the input highway layer (through field mapping in the UI, a candidate-name lookup, or official translated attributes).
+* **`complementar`**: The parameter was obtained from a matching feature in a **complementary layer** spatially snapped by proximity (Decisions D4 and D6).
+* **`usuario`**: The parameter was entered or overridden manually by the user in the plugin interface (parameter fixed via *Fix* or entered in *Value where there is no data*).
+* **`padrao`**: The parameter was not in the input layer nor in the complementary layer and the plugin applied the road-class default or residual DNIT/HCM catalogue default.
 
 | Provenance field | Associated parameter | Description |
 |---|---|---|
@@ -114,13 +170,13 @@ The `src_*` fields can take one of three possible values:
 | `src_directional_split` | `directional_split` | Provenance of the directional distribution of traffic (e.g. 50/50, 60/40). |
 | `src_bpr_alpha` | `bpr_alpha` | Provenance of the `alfa` parameter of the BPR impedance equation. |
 | `src_bpr_beta` | `bpr_beta` | Provenance of the `beta` parameter of the BPR impedance equation. |
-| `src_capacidade` | `capacidade` | Provenance of the per-direction capacity supplied (`oficial`, `usuario` or `padrao`). |
-| `src_tempo_livre` | `tempo_livre` | Provenance of the free-flow time supplied (`oficial`, `usuario` or `padrao`). |
-| `src_mao_unica` | `mao_unica` | Provenance of the one-way flag (`oficial`, `usuario` or `padrao`). |
+| `src_capacidade` | `capacidade` | Provenance of the per-direction capacity supplied (`oficial`, `complementar`, `usuario` or `padrao`). |
+| `src_tempo_livre` | `tempo_livre` | Provenance of the free-flow time supplied (`oficial`, `complementar`, `usuario` or `padrao`). |
+| `src_mao_unica` | `mao_unica` | Provenance of the one-way flag (`oficial`, `complementar`, `usuario` or `padrao`). |
 
 ---
 
-## 5. v/c Graduated Symbology and Style
+## 6. v/c Graduated Symbology and Style
 
 The highway assignment output layers (`alocacao_aon`, `alocacao_msa` and `alocacao_fw`) are automatically configured with a native QGIS graduated symbology renderer (`QgsGraduatedSymbolRenderer`) applied to the **`vc`** field.
 
@@ -140,7 +196,7 @@ The style uses an intuitive 6-class colour scale (from dark green to purple) acc
 
 ---
 
-## 6. GEH Calibration with Counts Layer (Tab 4 — calibracao_geh)
+## 7. GEH Calibration with Counts Layer (Tab 4 — calibracao_geh)
 
 Generated upon running the **Calibrate** command on the Calibration tab of the highway panel, comparing assigned flows on the road network against observed data from a traffic count layer (e.g. PNCT/DNIT monitoring stations).
 

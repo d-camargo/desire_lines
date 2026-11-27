@@ -84,12 +84,27 @@ Quando utilizada a opção *Usar uma camada existente*, a área de estudo també
 
 A aba **Capacidade** ("Capacity") reúne as configurações operacionais e geométricas para o cálculo de capacidade HCM e parâmetros da rede viária.
 
-O grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)") traz uma linha por parâmetro para os 18 parâmetros do sistema (tipo de segmento,
-faixas, terreno, % de veículos pesados, FFS, PHF, largura de faixa e
-acostamento, ultrapassagem proibida, densidade de acessos, divisão direcional,
-alfa e beta do BPR, capacidade informada, tempo livre e mão única).
+O grupo *Parâmetros HCM (padrão, ou sobrescrever globalmente / por campo)* ("HCM parameters (default, or override globally / by field)") traz a tabela de parâmetros para os 18 parâmetros operacionais do sistema (tipo de segmento, faixas, terreno, % de veículos pesados, FFS, PHF, largura de faixa e acostamento, ultrapassagem proibida, densidade de acessos, divisão direcional, alfa e beta do BPR, capacidade informada, tempo livre e mão única).
 
-Cada linha oferece **duas saídas**: um valor global digitado no controle e um *combobox* *field:* ("field:") para mapear qualquer coluna da camada de rodovias.
+Cada linha da tabela é composta por quatro colunas:
+
+| Coluna | Descrição |
+|---|---|
+| **Parâmetro** ("Parameter") | Nome do parâmetro operacional ou geométrico do HCM. |
+| **Valor onde não há dado** ("Value where there is no data") | Valor utilizado caso a feição na malha e a camada complementar não tragam informação (etapa 6 da cascata). Se modificado pelo usuário em relação ao catálogo, é registrado como proveniência **`usuario`**. |
+| **Fixar** ("Fix") | Caixa de seleção (`QCheckBox`) que, quando marcada (sem campo mapeado), força o valor digitado sobre toda a rede viária (etapa 1 da cascata). O valor prevalece sobre atributos da camada e complementos, sendo registrado com proveniência **`usuario`**. |
+| **Campo da camada** ("Layer field") | *Combobox* que permite mapear diretamente qualquer coluna da camada viária ao parâmetro (etapa 2 da cascata). Valores lidos com sucesso recebem proveniência **`oficial`**. |
+
+Quando você utiliza a opção *Baixar via GisBR (malha oficial SNV/DER)* na aba Rede, a malha viária baixada (`malha_gisbr_<uf>`) já chega padronizada no esquema de 21 colunas no vocabulário técnico do HCM (Decisões D2 e D3). Dessa forma, o plugin reconhece e lê automaticamente os dados oficiais diretamente da camada sem que você precise mapear nenhum campo manualmente.
+
+### Grupo Dados complementares (opcional)
+
+Localizado logo abaixo da tabela de parâmetros, o grupo **Dados complementares (opcional)** ("Complementary data (optional)") permite enriquecer a malha viária com dados de fontes secundárias (Decisões D4 e D6):
+
+* **Camada complementar** ("Complementary layer"): *Combobox* que aceita qualquer camada vetorial adicional carregada no projeto QGIS (linhas como eixos do OSM ou `osm_links_rm<id>`, pontos como postos de contagem contendo % de veículos pesados, ou polígonos como áreas urbanizadas do IBGE). Deixe vazio caso deseje trabalhar apenas com os dados da rede viária.
+* **Distância máxima** ("Max. distance"): Raio de busca em metros (padrão **30 m**). O plugin avalia o ponto médio geométrico de cada link rodoviário e busca a feição complementar mais próxima dentro do raio configurado (medido no CRS métrico da malha).
+
+Os atributos da feição complementar encontrada passam por tradução automática (`oficiais.traduz`) e busca por candidatos padrão, e os parâmetros absorvidos recebem a proveniência **`complementar`** (etapa 5 da cascata).
 
 ### Parâmetros Especiais de Rede e a Sentinela `0`
 
@@ -99,21 +114,23 @@ Três parâmetros permitem incorporar diretamente atributos conhecidos de malhas
 * **Tempo de fluxo livre (0 = comprimento ÷ FFS)** (`tempo_livre`): Tempo em fluxo livre em minutos. A sentinela **`0`** calcula o tempo com base no comprimento geométrico e na velocidade livre (`comprimento ÷ vel_livre`). Qualquer valor **`> 0`** substitui o tempo calculado.
 * **Mão única (sentido da geometria)** (`mao_unica`): Booleano. Se verdadeiro (`True`, `1`, `'sim'`, `'yes'`), gera apenas o arco no sentido da geometria (`fw`), omitindo o reverso (`bw`). Se falso (`False`), gera os dois arcos direcionados (`fw` e `bw`).
 
-### Precedência e Mapeamento de Campos (Decisão D2)
+### Precedência e Cascata de Resolução (Decisões D4 e D7)
 
-Quando você seleciona uma coluna no combo *field:* de qualquer parâmetro, esse mapeamento é repassado diretamente para a resolução (`field_map`). O valor encontrado na coluna mapeada é adotado com proveniência **`oficial`**.
-
-A ordem de precedência rigorosa por feição e por parâmetro é:
+A resolução dos parâmetros ocorre em duas passadas através de uma cascata rigorosa de 8 etapas implementada em `params.resolve()`. A primeira etapa que fornecer um valor válido vence:
 
 | Precedência | Origem | Registrada como |
 |---|---|---|
-| 1º | Valor global digitado na aba (se diferente de sentinela 0 para capacidade/tempo livre) | `usuario` |
-| 2º | Coluna da camada selecionada no combo *field:* daquela linha | `oficial` |
-| 3º | Colunas com nomes candidatos padrão presentes na feição | `oficial` |
-| 4º | Padrão do catálogo de fábrica do plugin | `padrao` |
+| 1º | Parâmetro fixado na UI marcando a opção **Fixar** (sem campo mapeado) | `usuario` |
+| 2º | Coluna da camada selecionada na coluna **Campo da camada** | `oficial` |
+| 3º | Tradução automática de atributos de fontes oficiais conhecidas (`oficiais.traduz`) | `oficial` |
+| 4º | Colunas com nomes candidatos padrão presentes na feição (incluindo o esquema da malha padronizada) | `oficial` |
+| 5º | Feição mais próxima da **Camada complementar** a até a distância máxima configurada | `complementar` |
+| 6º | Valor digitado na coluna **Valor onde não há dado** | `usuario` |
+| 7º | Padrão por classe de rodovia (`PADRAO_POR_CLASSE`: pista dupla, simples ou não pavimentada) | `padrao` |
+| 8º | Padrão de fábrica do catálogo do plugin (`PARAMS`) | `padrao` |
 
 !!! note "A proveniência vai para a camada de saída"
-    Cada arco carrega um campo `src_<parâmetro>` com `oficial`, `usuario` ou
+    Cada arco carrega um campo `src_<parâmetro>` com `oficial`, `complementar`, `usuario` ou
     `padrao`, e a mensagem final resume quantos (arco, parâmetro) vieram de
     cada origem. É o que separa "capacidade calculada com o dado da base" de
     "capacidade calculada com o padrão de fábrica" — ver
@@ -242,7 +259,7 @@ As camadas de arcos são estilizadas por **`vc`** em classes fixas de A a F (ver
 | `los` | Nível de serviço **aproximado**, derivado do `vc` (o LOS oficial do HCM usa densidade/velocidade média de viagem) |
 | `tempo_h`, `atraso_h` | Tempo de viagem no arco e atraso sobre o fluxo livre |
 | `metodo`, `escopo` | Método usado (`fw`/`msa`/`aon`/`capacidade`) e `rodoviario` ou `urbano` |
-| `src_*` | Proveniência de cada parâmetro (incluindo `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `usuario` ou `padrao` |
+| `src_*` | Proveniência de cada parâmetro (incluindo `src_capacidade`, `src_tempo_livre`, `src_mao_unica`): `oficial`, `complementar`, `usuario` ou `padrao` |
 
 A mensagem de sucesso ao final da alocação resume os pares alocados,
 número de arcos, proveniência, contagem de arcos urbanos, gap,

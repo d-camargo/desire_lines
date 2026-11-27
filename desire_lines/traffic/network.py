@@ -185,7 +185,7 @@ def calculate_free_flow_time(length_m, ffs_kmh):
 
 
 def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=None, precision=3,
-                        field_map=None):
+                        field_map=None, complemento=None, defaults=None):
     """Constrói os arcos direcionados (1 ou 2 arcos por link) para um link rodoviário (D1, D5).
 
     Args:
@@ -196,6 +196,8 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
         length_m (float | None): Comprimento em metros (se None, calculado dos pontos).
         precision (int): Precisão do snap de nós.
         field_map (dict | None): Parâmetro -> nome do campo mapeado na camada (D2).
+        complemento (dict | None): Atributos da camada complementar deste link (D4).
+        defaults (dict | None): Valor onde não há dado, por parâmetro (D4).
 
     Returns:
         tuple: (arc_fw, arc_bw) com os arcos direto e reverso (arc_bw é None quando mão única).
@@ -206,7 +208,8 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
     if length_m is None:
         length_m = calculate_length_m(points)
 
-    valores, origens = resolve(feature=feature, overrides=overrides, field_map=field_map)
+    valores, origens = resolve(feature=feature, overrides=overrides, field_map=field_map,
+                               complemento=complemento, defaults=defaults)
     cap_hcm, scope = segment_capacity(valores)
 
     cap_inf = valores.get('capacidade', 0.0)
@@ -263,7 +266,8 @@ def build_directed_arcs(link_id, points, feature=None, overrides=None, length_m=
     return arc_fw, arc_bw
 
 
-def build_network(features, overrides=None, precision=3, id_field=None, field_map=None):
+def build_network(features, overrides=None, precision=3, id_field=None, field_map=None,
+                  complementos=None, defaults=None):
     """Processa uma coleção de feições/links rodoviários e constrói a rede de arcos direcionados.
 
     Args:
@@ -272,6 +276,9 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
         precision (int): Casas decimais para snap de nós (padrão 3).
         id_field (str | None): Nome do campo de ID do link. Se None, tenta 'id', 'gid', 'link_id', etc. ou índice numérico.
         field_map (dict | None): Parâmetro -> nome do campo mapeado na camada (D2).
+        complementos (dict | None): {id da feição: attrs} da camada complementar (D4).
+            A chave é ``feat.id()`` em QgsFeature e ``feat.get('fid')`` em dict.
+        defaults (dict | None): Valor onde não há dado, por parâmetro (D4).
 
     Returns:
         list: Lista de objetos Arc direcionados (1 ou 2 arcos por link).
@@ -279,6 +286,7 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
     arcs = []
     if not features:
         return arcs
+    complementos = complementos or {}
 
     idx = 0
     for feat in features:
@@ -286,10 +294,12 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
         link_id = None
         geometry = None
         attr_dict = None
+        fid = None
 
         if isinstance(feat, dict):
             geometry = feat.get('geometry')
             attr_dict = feat.get('attributes', feat)
+            fid = feat.get('fid')
             if id_field and id_field in feat:
                 link_id = feat[id_field]
             elif 'id' in feat:
@@ -306,6 +316,7 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
 
             if hasattr(feat, 'id') and callable(feat.id):
                 link_id = feat.id()
+                fid = link_id
 
             if id_field and hasattr(feat, 'attribute'):
                 try:
@@ -331,6 +342,8 @@ def build_network(features, overrides=None, precision=3, id_field=None, field_ma
             overrides=overrides,
             precision=precision,
             field_map=field_map,
+            complemento=complementos.get(fid) if fid is not None else None,
+            defaults=defaults,
         )
         if fw is not None:
             arcs.append(fw)

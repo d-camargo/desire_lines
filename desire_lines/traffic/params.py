@@ -1,6 +1,22 @@
 # coding=utf-8
 """Catálogo declarativo de parâmetros e resolução de valores/origens (D7)."""
 
+# Padrão por classe de via (D4, etapa 7): usado quando nenhuma etapa anterior
+# da cascata dá valor a `lanes`/`vel_livre`. A classe sai de
+# `tipo_segmento`/`pavimentado`, resolvidos na primeira passada.
+PADRAO_POR_CLASSE = {
+    'pista_dupla': {'lanes': 2, 'vel_livre': 100.0},
+    'pista_simples_pavimentada': {'lanes': 1, 'vel_livre': 80.0},
+    'nao_pavimentada': {'lanes': 1, 'vel_livre': 60.0},
+}
+
+# Grafias de pista dupla aceitas por `hcm.segment_capacity` (ramo multilane).
+_TIPOS_PISTA_DUPLA = ('multilane', 'freeway', 'pista_dupla', 'duplicada',
+                      'pista dupla', 'dupla', 'multifaixa')
+
+# Primeira passada da cascata: definem a classe da via (D4).
+_PRIMEIRA_PASSADA = ('tipo_segmento', 'pavimentado')
+
 PARAMS = {
     'tipo_segmento': {
         'id': 'tipo_segmento',
@@ -154,12 +170,14 @@ def _coerce_value(raw_val, target_type):
     if target_type == bool:
         if isinstance(raw_val, bool):
             return raw_val
-        s = str(raw_val).strip().lower()
+        if not isinstance(raw_val, str):
+            return bool(raw_val)
+        s = raw_val.strip().lower()
         if s in ('true', '1', 'sim', 's', 'yes', 'y', 't', 'pavimentado', 'urbano'):
             return True
-        if s in ('false', '0', 'nao', 'não', 'n', 'no', 'f', 'rural', 'nao pavimentado'):
+        if s in ('false', '0', 'nao', 'não', 'nã', 'n', 'no', 'f', 'rural', 'nao pavimentado'):
             return False
-        return bool(raw_val)
+        raise ValueError(f"Valor booleano desconhecido: {raw_val!r}")
     if target_type == int:
         return int(float(raw_val))
     if target_type == float:
@@ -218,59 +236,135 @@ def _get_attribute_from_feature(feature, candidates):
     return None, False
 
 
-def resolve(feature=None, overrides=None, field_map=None):
-    """Resolve os valores e origens dos parâmetros para uma feição.
+def _is_null(val):
+    """True para None, string vazia e NULL do QGIS (QVariant nulo no Qt5)."""
+    return val is None or val == "" or str(val) == "NULL"
 
-    Precedência (D2): override do usuário → campo de ``field_map`` →
-    candidatos → padrão. Campo mapeado vazio/NULL cai para candidatos.
+
+def _feature_attrs(feature):
+    """Atributos de uma feição (dict ou QgsFeature) como dict, sem os nulos."""
+    if feature is None:
+        return {}
+    if isinstance(feature, dict):
+        return {k: v for k, v in feature.items() if not _is_null(v)}
+    if hasattr(feature, "fields") and callable(feature.fields):
+        attrs = {}
+        for fld in feature.fields():
+            val = feature.attribute(fld.name())
+            if not _is_null(val):
+                attrs[fld.name()] = val
+        return attrs
+    return {}
+
+
+def _classe(valores):
+    """Classe da via (chave de PADRAO_POR_CLASSE) a partir da primeira passada."""
+    if not valores.get('pavimentado', True):
+        return 'nao_pavimentada'
+    tipo = str(valores.get('tipo_segmento', '')).strip().lower()
+    if tipo in _TIPOS_PISTA_DUPLA:
+        return 'pista_dupla'
+    return 'pista_simples_pavimentada'
+
+
+def resolve(feature=None, overrides=None, field_map=None, complemento=None, defaults=None):
+    """Resolve os valores e origens dos parâmetros para uma feição (D4).
+
+    Cascata por parâmetro — a primeira etapa que dá valor vence; valor que
+    não converte para o tipo do parâmetro faz a cascata seguir:
+
+    1. ``overrides`` (parâmetros fixados) → ``'usuario'``;
+    2. campo mapeado em ``field_map`` → ``'oficial'``;
+    3. ``oficiais.traduz(atributos da feição)`` → ``'oficial'``;
+    4. ``campos_candidatos`` na feição → ``'oficial'``;
+    5. ``complemento``: ``oficiais.traduz`` e depois ``campos_candidatos`` →
+       ``'complementar'``;
+    6. ``defaults`` (valor onde não há dado) → ``'usuario'``;
+    7. ``PADRAO_POR_CLASSE`` → ``'padrao'``;
+    8. ``PARAMS[p]['default']`` → ``'padrao'``.
+
+    Duas passadas: primeiro ``tipo_segmento``/``pavimentado`` (que definem a
+    classe da etapa 7), depois o resto.
 
     Args:
         feature: dict ou QgsFeature da rodovia (ou None).
-        overrides: dict de parâmetro -> valor sobrescrito pelo usuário (ou None).
+        overrides: dict de parâmetro -> valor fixado pelo usuário (ou None).
         field_map: dict de parâmetro -> nome do campo mapeado na camada (ou None).
+        complemento: dict (ou feição) de atributos da camada complementar (ou None).
+        defaults: dict de parâmetro -> valor onde não há dado (ou None).
 
     Returns:
-        tuple: (valores, origens) onde origens[p] em {'oficial', 'padrao', 'usuario'}.
+        tuple: (valores, origens) onde origens[p] em
+            {'oficial', 'complementar', 'padrao', 'usuario'}.
     """
-    if overrides is None:
-        overrides = {}
-    if field_map is None:
-        field_map = {}
+    # Import local: `oficiais` importa `params` no topo (D2).
+    from . import oficiais
+
+    overrides = overrides or {}
+    field_map = field_map or {}
+    defaults = defaults or {}
+    feat_attrs = _feature_attrs(feature)
+    # Coluna com o próprio id do parâmetro já é valor padronizado (malha D3):
+    # a tradução não a reinterpreta (ex.: `lanes` por sentido não é dividido
+    # por 2 pela regra OSM de `lanes` total). Fica para a etapa 4.
+    ids_na_feicao = {str(k).lower() for k in feat_attrs}
+    traduzido = {p: v for p, v in oficiais.traduz(feat_attrs).items()
+                 if p not in ids_na_feicao}
+    compl_attrs = _feature_attrs(complemento)
+    compl_traduzido = oficiais.traduz(compl_attrs)
 
     valores = {}
     origens = {}
 
-    for param_id, spec in PARAMS.items():
-        # 1. Usuário sobrescreveu
-        if param_id in overrides and overrides[param_id] is not None:
-            try:
-                valores[param_id] = _coerce_value(overrides[param_id], spec['tipo'])
-                origens[param_id] = 'usuario'
-                continue
-            except (ValueError, TypeError):
-                pass
-
-        # 2. Dado oficial na feição: campo mapeado (D2), senão candidatos
+    def _resolve_param(param_id, spec):
+        tipo = spec['tipo']
+        etapas = []
+        # 1. Fixado pelo usuário
+        if overrides.get(param_id) is not None:
+            etapas.append(('usuario', overrides[param_id]))
+        # 2. Campo mapeado
         if field_map.get(param_id):
             val, found = _get_attribute_from_feature(feature, [field_map[param_id]])
             if found:
-                try:
-                    valores[param_id] = _coerce_value(val, spec['tipo'])
-                    origens[param_id] = 'oficial'
-                    continue
-                except (ValueError, TypeError):
-                    pass
+                etapas.append(('oficial', val))
+        # 3. Tradução dos atributos brutos da feição
+        if traduzido.get(param_id) is not None:
+            etapas.append(('oficial', traduzido[param_id]))
+        # 4. Candidatos na feição
         val, found = _get_attribute_from_feature(feature, spec['campos_candidatos'])
         if found:
+            etapas.append(('oficial', val))
+        # 5. Camada complementar: tradução, depois candidatos
+        if compl_traduzido.get(param_id) is not None:
+            etapas.append(('complementar', compl_traduzido[param_id]))
+        val, found = _get_attribute_from_feature(compl_attrs, spec['campos_candidatos'])
+        if found:
+            etapas.append(('complementar', val))
+        # 6. Valor onde não há dado
+        if defaults.get(param_id) is not None:
+            etapas.append(('usuario', defaults[param_id]))
+
+        for origem, bruto in etapas:
             try:
-                valores[param_id] = _coerce_value(val, spec['tipo'])
-                origens[param_id] = 'oficial'
-                continue
+                return _coerce_value(bruto, tipo), origem
             except (ValueError, TypeError):
-                pass
+                continue
 
-        # 3. Padrão
-        valores[param_id] = spec['default']
-        origens[param_id] = 'padrao'
+        # 7. Padrão por classe
+        if param_id not in _PRIMEIRA_PASSADA:
+            por_classe = PADRAO_POR_CLASSE[_classe(valores)]
+            if param_id in por_classe:
+                return por_classe[param_id], 'padrao'
+        # 8. Padrão do catálogo
+        return spec['default'], 'padrao'
 
+    for passada in (True, False):
+        for param_id, spec in PARAMS.items():
+            if (param_id in _PRIMEIRA_PASSADA) != passada:
+                continue
+            valores[param_id], origens[param_id] = _resolve_param(param_id, spec)
+
+    # Devolve na ordem do catálogo
+    valores = {p: valores[p] for p in PARAMS}
+    origens = {p: origens[p] for p in PARAMS}
     return valores, origens

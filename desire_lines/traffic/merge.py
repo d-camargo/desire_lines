@@ -1,5 +1,5 @@
 # coding=utf-8
-"""Módulo de costura de pontas soltas, limpeza e unificação de esquema em Python puro (D4, D5, D6).
+"""Módulo de costura de pontas soltas e limpeza em Python puro (D4, D5).
 
 Este módulo NÃO depende nem importa `qgis` para permitir execução e testes
 isolados e rápidos da lógica de higienização de linhas e resolução de esquema.
@@ -227,71 +227,6 @@ def limpa_linhas(linhas, excluir=None, precision=3):
     }
 
     return mantidas, relatorio
-
-
-def uniao_campos(listas, incluir_base=True):
-    """Calcula o esquema unificado de atributos para múltiplas fontes (D6).
-
-    Args:
-        listas (list): Lista de listas de tuplas (nome_campo, tipo_str),
-            ex.: [[('campo1', 'Integer'), ('campo2', 'String')], ...].
-        incluir_base (bool): Se True (padrão), inclui os campos base ('fonte', 'String')
-            e ('ajuste', 'String') no início da lista.
-
-    Returns:
-        list: Lista de tuplas (nome_campo, tipo_str) ordenada pela primeira aparição.
-            Em caso de conflito de tipo entre fontes, o tipo vira 'String'.
-            Os campos 'fonte' e 'ajuste' não são duplicados.
-    """
-    if listas is None:
-        listas = []
-
-    # Se uma lista plana de tuplas foi passada por engano, encapsula em lista
-    if listas and isinstance(listas[0], (tuple, list)) and len(listas[0]) == 2 and isinstance(listas[0][0], str):
-        listas = [listas]
-
-    resultado = []
-    indices = {}  # norm_name -> index in resultado
-
-    if incluir_base:
-        for base_name in ('fonte', 'ajuste'):
-            norm = base_name.lower()
-            indices[norm] = len(resultado)
-            resultado.append((base_name, 'String'))
-
-    for lista in listas:
-        if not lista:
-            continue
-
-        if isinstance(lista, dict):
-            itens = lista.items()
-        else:
-            itens = lista
-
-        for item in itens:
-            if not item or len(item) < 2:
-                continue
-            nome, tipo = item[0], item[1]
-            nome_str = str(nome)
-            tipo_str = str(tipo)
-            norm = nome_str.lower()
-
-            if norm in indices:
-                idx = indices[norm]
-                nome_existente, tipo_existente = resultado[idx]
-
-                # Campos base fonte/ajuste permanecem como String e não duplicam
-                if norm in ('fonte', 'ajuste'):
-                    continue
-
-                # Conflito de tipo vira String
-                if tipo_existente != tipo_str and tipo_existente.lower() != tipo_str.lower():
-                    resultado[idx] = (nome_existente, 'String')
-            else:
-                indices[norm] = len(resultado)
-                resultado.append((nome_str, tipo_str))
-
-    return resultado
 
 
 def converte_valor(val, tipo_str):

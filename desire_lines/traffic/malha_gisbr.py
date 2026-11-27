@@ -24,8 +24,8 @@ from qgis.core import (
     QgsWkbTypes,
 )
 
-from . import gisbr_bridge
-from .merge import converte_valor, costura_extremidades, limpa_linhas, uniao_campos
+from . import gisbr_bridge, oficiais
+from .merge import converte_valor, costura_extremidades, limpa_linhas
 from .outputs import _create_field
 from ..aon import pick_metric_crs
 
@@ -48,10 +48,6 @@ def _checar_cancelamento(feedback):
         if callable(is_canceled) and is_canceled():
             raise DownloadCancelado('Download da malha cancelado pelo usuário.')
 
-# Tipo do campo (valor numérico comum a QVariant.Type e QMetaType.Type) ->
-# nome usado por `merge.uniao_campos`; o que não estiver aqui vira String (D6).
-_TIPO_CAMPO = {2: 'Integer', 3: 'Integer', 4: 'Integer64', 5: 'Integer64',
-               6: 'Real'}
 _TIPO_QGIS = {'Integer': 'int', 'Integer64': 'int64', 'Real': 'double'}
 
 _EPS = 1e-6
@@ -208,15 +204,6 @@ def _bbox_4674(uf, bbox, bbox_crs, crs_4674, transform_context=None):
         rect = QgsCoordinateTransform(
             origem, crs_4674, ctx).transformBoundingBox(rect)
     return rect
-
-
-def _tipo_campo(campo):
-    """Nome de tipo (D6) de um `QgsField`, igual em Qt5 e Qt6."""
-    tipo = campo.type()
-    try:
-        return _TIPO_CAMPO.get(int(getattr(tipo, 'value', tipo)), 'String')
-    except (TypeError, ValueError):
-        return 'String'
 
 
 def _valor_py(valor):
@@ -387,13 +374,11 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None,
     # 2) Junta na ordem de precedência (D3).
     t0_juncao = time.perf_counter()
     malha = []
-    campos_por_fonte = []
     rel_fontes = []
     for i, (fonte, camada) in enumerate(zip(fontes, camadas)):
         _checar_cancelamento(feedback)
         nome = fonte.get('nome') or fonte.get('id')
         _progresso(feedback, 50.0 + 40.0 * i / len(fontes), f'Juntando {nome}')
-        campos_por_fonte.append([(c.name(), _tipo_campo(c)) for c in camada.fields()])
         para_4674 = None
         if camada.crs() != crs_4674:
             para_4674 = QgsCoordinateTransform(camada.crs(), crs_4674, ctx)
@@ -441,27 +426,35 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None,
     malha, rel_costura = costura_extremidades(malha, tol_m=TOL_COSTURA_M)
     tempo_costura = time.perf_counter() - t0_costura
 
-    # 4) Camada com o esquema de D6.
+    # 4) Camada com o esquema padronizado (D3).
     _checar_cancelamento(feedback)
     t0_camada = time.perf_counter()
-    campos = uniao_campos(campos_por_fonte)
     saida = QgsVectorLayer('LineString', f'malha_gisbr_{uf.lower()}', 'memory')
     saida.setCrs(crs_metrico)
     prov = saida.dataProvider()
     prov.addAttributes([_create_field(n, _TIPO_QGIS.get(t, 'string'))
-                        for n, t in campos])
+                        for n, t in oficiais.ESQUEMA_PADRONIZADO.items()])
     saida.updateFields()
+
+    contagens = {p: 0 for p in oficiais.CAMPOS_CAPACIDADE}
     feats = []
     for linha in malha:
-        attrs = {k.lower(): v for k, v in linha['attrs'].items()}
+        padrao = oficiais.padroniza(linha.get('attrs') or {}, linha.get('fonte'))
+        padrao['fonte'] = linha.get('fonte')
+        padrao['ajuste'] = linha.get('ajuste') or ''
+
+        for p in oficiais.CAMPOS_CAPACIDADE:
+            if padrao.get(p) is not None:
+                contagens[p] += 1
+
         valores = []
-        for nome_campo, tipo in campos:
-            if nome_campo == 'fonte':
-                valores.append(linha['fonte'])
-            elif nome_campo == 'ajuste':
-                valores.append(linha['ajuste'])
+        for nome_campo, tipo in oficiais.ESQUEMA_PADRONIZADO.items():
+            val = padrao.get(nome_campo)
+            if isinstance(val, bool):
+                val = 1 if val else 0
             else:
-                valores.append(converte_valor(attrs.get(nome_campo.lower()), tipo))
+                val = converte_valor(val, tipo)
+            valores.append(val)
         feat = QgsFeature(saida.fields())
         feat.setGeometry(_geom(linha['pts']))
         feat.setAttributes(valores)
@@ -470,6 +463,8 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None,
     saida.updateExtents()
     tempo_camada = time.perf_counter() - t0_camada
     _progresso(feedback, 100.0, f'Malha unida: {len(feats)} trechos')
+
+    preenchidos = {p: n for p, n in contagens.items() if n > 0}
 
     tempo_total = time.perf_counter() - t_inicio
     tempos_s = {
@@ -483,6 +478,7 @@ def baixar_malha(uf, bbox=None, bbox_crs=None, ids_fontes=None, feedback=None,
     relatorio = {
         'uf': uf, 'bbox_4674': bbox_tupla, 'crs': crs_metrico.authid(),
         'fontes': rel_fontes, 'costura': rel_costura, 'feicoes': len(feats),
+        'preenchidos': preenchidos,
         'tempos_s': tempos_s,
     }
     return saida, relatorio

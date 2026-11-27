@@ -7,7 +7,6 @@ import unittest
 from desire_lines.traffic import merge
 from desire_lines.traffic.merge import (
     limpa_linhas,
-    uniao_campos,
     converte_valor,
     costura_extremidades,
 )
@@ -127,69 +126,6 @@ class TestLimpaLinhas(unittest.TestCase):
         self.assertEqual(relatorio['duplicata'], 2)
 
         self.assertEqual([l['id'] for l in mantidas], [5, 8])
-
-
-class TestUniaoCampos(unittest.TestCase):
-    """Testes para uniao_campos (D6)."""
-
-    def test_conflito_de_tipo_vira_string(self):
-        fonte_dnit = [
-            ('vl_extensao', 'Real'),
-            ('faixas', 'Integer'),
-            ('ds_superfi', 'String'),
-        ]
-        fonte_der = [
-            ('vl_extensao', 'Real'),
-            ('faixas', 'Real'),  # Conflito: Integer x Real -> String
-            ('jurisdicao', 'String'),
-        ]
-
-        unificado = uniao_campos([fonte_dnit, fonte_der])
-        schema_dict = dict(unificado)
-
-        self.assertEqual(schema_dict['faixas'], 'String')
-        self.assertEqual(schema_dict['vl_extensao'], 'Real')
-        self.assertEqual(schema_dict['ds_superfi'], 'String')
-        self.assertEqual(schema_dict['jurisdicao'], 'String')
-
-    def test_ordem_de_primeira_aparicao_e_preservada(self):
-        fonte1 = [
-            ('campo_c', 'String'),
-            ('campo_a', 'Integer'),
-        ]
-        fonte2 = [
-            ('campo_b', 'Real'),
-            ('campo_a', 'Integer'),
-            ('campo_d', 'String'),
-        ]
-
-        unificado = uniao_campos([fonte1, fonte2])
-        nomes = [campo[0] for campo in unificado]
-
-        # 'fonte' e 'ajuste' no início, seguidos pela ordem de primeira aparição
-        self.assertEqual(nomes, ['fonte', 'ajuste', 'campo_c', 'campo_a', 'campo_b', 'campo_d'])
-
-    def test_fonte_ajuste_nao_duplicam(self):
-        fonte1 = [
-            ('fonte', 'String'),
-            ('rodovia', 'String'),
-        ]
-        fonte2 = [
-            ('ajuste', 'String'),
-            ('extensao', 'Real'),
-        ]
-
-        unificado = uniao_campos([fonte1, fonte2])
-        nomes = [campo[0] for campo in unificado]
-
-        self.assertEqual(nomes.count('fonte'), 1)
-        self.assertEqual(nomes.count('ajuste'), 1)
-        self.assertEqual(nomes, ['fonte', 'ajuste', 'rodovia', 'extensao'])
-
-    def test_uniao_campos_vazios(self):
-        self.assertEqual(uniao_campos([]), [('fonte', 'String'), ('ajuste', 'String')])
-        self.assertEqual(uniao_campos([[]]), [('fonte', 'String'), ('ajuste', 'String')])
-        self.assertEqual(uniao_campos(None), [('fonte', 'String'), ('ajuste', 'String')])
 
 
 class TestConverteValor(unittest.TestCase):

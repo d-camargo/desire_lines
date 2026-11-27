@@ -8,7 +8,7 @@ qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=The Desire Lines plugin for QGIS is a tool designed to create and visualize desire lines, which are graphical representations of preferred or anticipated movement paths between points on a map.
-version=0.9.0
+version=0.10.0
 author=Diego Camargo
 email=dg.camargo@proton.me
 
@@ -22,6 +22,14 @@ repository=https://github.com/d-camargo/desire_lines
 
 hasProcessingProvider=no
 changelog=
+    0.10.0
+    - New: the highway network downloaded via GisBR (DNIT SNV + state DER) now comes with a clean, standardized attribute table — source, road code, segment code, km range, administration and the HCM capacity inputs — instead of the raw union of every source field.
+    - New: capacity is estimated in a cascade — official attributes of the network first, then an optional complementary layer, then defaults — and every parameter records where it came from (official, complementary, default, user).
+    - New: dual/single carriageway, paved/unpaved and urban perimeter of DNIT SNV and DER-SP feed the HCM capacity without mapping fields by hand.
+    - New: optional complementary layer in the Capacity tab (e.g. OpenStreetMap lanes and speed limits, count posts with %% heavy vehicles, urban areas), matched to the nearest link.
+    - New: each HCM parameter can be fixed for the whole network; otherwise the typed value is used only where the data has none.
+    - Fix: the Capacity tab fields now grow with the panel instead of staying squeezed in the corner.
+    - Fix: the default values typed in the panel no longer override the official attributes of the network.
     0.9.0
     - New: the highway panel is organised in four tabs — Network, Capacity, Assignment and Calibration — each with its own action button; the output GeoPackage sits above the tabs and is shared by all of them.
     - New: calibration of the assignment against traffic counts (macro-simulation), in its own Calibration tab — each count post is matched to the nearest assigned link (both directions summed), scored by the GEH statistic and classified into bands A–D.
